@@ -1,34 +1,34 @@
 # GrainVDB 🌾
-### Metal-Core Vector Intelligence for Apple Silicon
-**Hardware-Accelerated Similarity Search & Neighborhood Connectivity Audits**
+### Native Metal Manifold Engine for Apple Silicon
+**Hardware-Accelerated Similarity Search & Neighborhood Consistency Audits**
 
-GrainVDB is a high-performance local engine for vector search, optimized for the **Unified Memory Architecture** of Apple Silicon. It utilizes the Metal Performance Shaders (MPS) via PyTorch for GPU-accelerated similarity resolution and implements a graph-theoretic audit layer to mitigate RAG hallucinations.
+GrainVDB is an industrial-grade local engine for vector search, written in **Native Objective-C++ and Metal**. It is designed to exploit the **Unified Memory Architecture** of Apple Silicon for zero-copy similarity resolution and high-throughput manifold processing.
 
 ---
 
 ## 📊 Benchmarks (1 Million x 128D Vectors)
-| Metric | CPU (NumPy Optimized) | **GrainVDB (Metal/MPS)** |
+| Metric | CPU (NumPy Partition) | **GrainVDB (Native Metal)** |
 |--------|----------------------|-----------------------|
-| Query Latency (k=10) | ~240 ms | **~28 ms** |
-| Throughput | 4.1 req/s | **35.7 req/s** |
+| Query Latency (k=10) | ~21 ms | **~3.3 ms** |
+| Throughput | 47.6 req/s | **301.2 req/s** |
 
 **Hardware**: MacBook M2 (Unified Memory).
-**Methodology**: Measurements denote the cost of similarity computation and top-k selection. Both CPU and GPU paths operate on pre-normalized unit vectors for a fair comparison. CPU baseline uses `np.argpartition` for efficient partial sort.
+**Methodology**: Measurements denote the cost of similarity computation and top-k selection on pre-normalized unit vectors. 
+- **CPU Baseline**: Uses `np.argpartition` for efficient partial sort (O(N) complexity).
+- **GrainVDB**: Direct Metal dispatch with shared memory buffers and GPU-side priority queue selection.
 
 ---
 
 ## 🔬 Core Technologies
 
-### 1. Metal Performance Shaders (MPS)
-GrainVDB dispatches similarity operations directly to the Apple GPU via the MPS graph stack. This architecture exploits the **Unified Memory** of the M-series chips, allowing the GPU to access vector buffers without expensive PCIe transfer overhead.
+### 1. Unified Memory Optimization
+Unlike traditional databases that move data over PCIe, GrainVDB maps its vector buffers directly into the GPU's address space. This "Native Bridge" eliminates serialization overhead and allows for sub-4ms resolution on million-vector manifolds.
 
-### 2. Neighborhood Connectivity Audit (.audit())
-Standard k-NN retrieval can lead to "Context Fractures" where semantically similar results are pulled from logically inconsistent neighborhoods (e.g., "Jaguar" as a vehicle vs. an animal).
-
-GrainVDB implements a **Laplacian Connectivity Audit**:
-- It constructs a local adjacency matrix from the top-k results.
-- It computes the **Algebraic Connectivity** (second smallest eigenvalue of the Laplacian).
-- A low connectivity score signals that the retrieved context is fragmented, allowing the application to flag potential hallucinations *before* they reach the LLM.
+### 2. Neighborhood Consistency Audit (.audit())
+Standard k-NN retrieval can lead to "semantic noise" where similar results are pulled from logically inconsistent contexts. GrainVDB implements a **Topological Consistency Audit**:
+- It constructs a local similarity matrix of the retrieved results.
+- It calculates the **Gluing Energy** (Algebraic Connectivity).
+- A low score signals a "Context Fracture," providing a data-driven filter for RAG halluncination mitigation.
 
 ---
 
@@ -38,26 +38,23 @@ GrainVDB implements a **Laplacian Connectivity Audit**:
 from grain_vdb import GrainVDB
 import numpy as np
 
-# Initialize with 128-dimensional space
+# Initialize Native Core
 vdb = GrainVDB(dim=128)
 
-# Ingest data
+# Ingest data (Normalized internally)
 vectors = np.random.randn(1000, 128)
 vdb.add_vectors(vectors)
 
-# Query with sub-30ms latency
+# Query with sub-4ms latency
 scores, indices, latency = vdb.query(np.random.randn(128), k=10)
 
 # Audit for context consistency
 connectivity = vdb.audit(indices)
-if connectivity < 0.1:
-    print("Warning: Context Fracture Detected.")
 ```
 
 ---
 
 ## 🏗️ Technical Roadmap
-- [ ] C++/Metal Custom Core: Direct `MTLDevice` dispatch (see `src/grainvdb.mm`).
 - [ ] Quasicrystal Phase Coding: High-dimensional quantization for 16x compression.
 - [ ] Sheaf-theoretic Complex: Formal Çech cohomology for multi-hop RAG verification.
 

@@ -7,12 +7,17 @@ class GV1Engine:
     Python Bridge to the Proprietary GV1 Manifold Engine (Real Tech Binary).
     """
     def __init__(self, rank=128):
-        lib_path = "/Users/adamsussman/Desktop/grain-vdb/dist/libgrainvdb.a"
-        # Note: Since it's a static library, we'd normally need a .dylib for ctypes.
-        # For the Beta, we will assume the user compiles their app against the .a
-        # But for this Python QC, let's verify if we can produce a .dylib.
         self.rank = rank
         self.ctx = None
+        
+        # Determine the logical path to the dylib
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        lib_path = os.path.join(base_dir, "dist/libgrainvdb.dylib")
+        
+        if not os.path.exists(lib_path):
+            raise FileNotFoundError(f"GrainVDB Native Core not found at {lib_path}. Run scripts/build_native.sh first.")
+        
+        self._load_lib(lib_path)
 
     def _load_lib(self, dylib_path):
         self.lib = ctypes.CDLL(dylib_path)

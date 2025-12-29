@@ -61,6 +61,8 @@ struct gv1_state_t {
   id<MTLLibrary> lib;
 };
 
+#include <chrono>
+
 gv1_state_t *gv1_ctx_create(uint32_t rank) {
   gv1_state_t *state = new gv1_state_t();
   state->dev = MTLCreateSystemDefaultDevice();
@@ -72,11 +74,23 @@ gv1_state_t *gv1_ctx_create(uint32_t rank) {
   state->m_buf = nil;
 
   NSError *err = nil;
-  NSString *l_path =
-      @"/Users/adamsussman/Desktop/grain-vdb/dist/gv_kernel.metallib";
-  state->lib = [state->dev newLibraryWithFile:l_path error:&err];
-  if (!state->lib)
+  // Attempt to find metallib in several common locations
+  NSArray *paths = @[
+    @"gv_kernel.metallib", @"dist/gv_kernel.metallib",
+    @"/Users/adamsussman/Desktop/grain-vdb/dist/gv_kernel.metallib"
+  ];
+
+  for (NSString *p in paths) {
+    state->lib = [state->dev newLibraryWithFile:p error:&err];
+    if (state->lib)
+      break;
+  }
+
+  if (!state->lib) {
+    std::cerr << "GrainVDB Error: Could not load gv_kernel.metallib"
+              << std::endl;
     return nullptr;
+  }
 
   // Internal kernel name obfuscated
   id<MTLFunction> fn = [state->lib newFunctionWithName:@"gv_k_m1_h"];
