@@ -101,9 +101,8 @@ def main():
         print(f"    FATAL: {e}")
         return
 
-    # Use same normalized data to ensure fair comparison of search speed only
-    # Note: GrainVDB re-normalizes internally (safety feature), but cost is amortized on load.
-    vdb.add_vectors(db_norm)  
+    # Use same normalized data and SKIP internal normalization for fairness
+    vdb.add_vectors(db_norm, assume_normalized=True)  
 
     # Warmup
     for i in range(WARMUP):
@@ -114,8 +113,7 @@ def main():
     
     for i in range(NQ):
         t0 = time.perf_counter()
-        # Query returns (indices, scores, internal_time)
-        # We ignore internal_time and measure wall-time here
+        # Query returns (indices, scores, kernel_ms)
         idx, _, _ = vdb.query(q_norm[i], k=K)
         dt = (time.perf_counter() - t0) * 1000.0
         
@@ -134,7 +132,8 @@ def main():
 
     mean_recall = np.mean(recalls)
     min_recall = np.min(recalls)
-    print(f"    Recall: Mean={mean_recall:.3f} | Min={min_recall:.3f}")
+    p50_recall = np.percentile(recalls, 50)
+    print(f"    Recall: Mean={mean_recall:.3f} | p50={p50_recall:.3f} | Min={min_recall:.3f}")
     
     if mean_recall < 0.9:
         print("    WARNING: Low recall integration.")
@@ -144,10 +143,11 @@ def main():
     # 5. Audit Check (Sanity check on clustered data)
     print("\n[5] Audit Check (Semantic Density)")
     densities = []
-    for i in range(5): # Check first 5
+    for i in range(NQ): # Check all
         d = vdb.audit(vdb_topk[i])
         densities.append(d)
-    print(f"    Sample Densities: {['{:.2f}'.format(x) for x in densities]}")
+    
+    print(f"    Density Stats: Mean={np.mean(densities):.2f} | p50={np.percentile(densities, 50):.2f} | Max={np.max(densities):.2f}")
     print("    (Expect >0.0 values due to clustered data)")
 
     speedup = np.percentile(cpu_ms, 50) / np.percentile(vdb_ms, 50)
