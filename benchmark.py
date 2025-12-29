@@ -25,8 +25,14 @@ def make_clusters(n: int, d: int, n_clusters: int, sigma: float, seed: int):
     x /= np.linalg.norm(x, axis=1, keepdims=True) + 1e-12
     return x, labels, centers
 
-def topk_cpu(db_norm: np.ndarray, q_norm: np.ndarray, k: int):
-    sims = db_norm @ q_norm
+def topk_cpu(db_norm: np.ndarray, q_norm: np.ndarray, k: int, out_sims: np.ndarray = None):
+    # Pre-allocate output buffer if provided to avoid malloc overhead in timing
+    if out_sims is None:
+        sims = db_norm @ q_norm
+    else:
+        np.dot(db_norm, q_norm, out=out_sims)
+        sims = out_sims
+        
     idx = np.argpartition(sims, -k)[-k:]
     idx = idx[np.argsort(sims[idx])[::-1]]
     return idx, sims[idx]
@@ -69,18 +75,18 @@ def main():
     q_norm /= np.linalg.norm(q_norm, axis=1, keepdims=True) + 1e-12
 
     # 2. CPU Baseline (Wall-Time per Query)
-    print("\n[2] CPU Baseline (np.dot + np.argpartition)")
+    print("\n[2] CPU Baseline (np.dot + np.argpartition + prealloc)")
     # Warmup
+    sims_buffer = np.empty(N, dtype=np.float32)
     for i in range(WARMUP):
-        topk_cpu(db_norm, q_norm[i % NQ], K)
+        topk_cpu(db_norm, q_norm[i % NQ], K, out_sims=sims_buffer)
 
     cpu_ms = []
     cpu_topk = []
     
     for i in range(NQ):
         t0 = time.perf_counter()
-        idx, _ = topk_cpu(db_norm, q_norm[i], K)
-        # Explicit timing stop right after selection
+        idx, _ = topk_cpu(db_norm, q_norm[i], K, out_sims=sims_buffer)
         dt = (time.perf_counter() - t0) * 1000.0
         cpu_ms.append(dt)
         cpu_topk.append(idx)
@@ -96,6 +102,7 @@ def main():
         return
 
     # Use same normalized data to ensure fair comparison of search speed only
+    # Note: GrainVDB re-normalizes internally (safety feature), but cost is amortized on load.
     vdb.add_vectors(db_norm)  
 
     # Warmup
