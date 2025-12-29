@@ -4,7 +4,8 @@ using namespace metal;
 /**
  * GrainVDB Search Kernel
  * ---------------------
- * Vectorized dot product using FP16 (half4) for 4x instruction throughput.
+ * Performs a brute-force dot product scan across the manifold.
+ * Uses half4 (FP16 SIMD) to maximize instruction throughput on M-series chips.
  */
 kernel void gv_similarity_scan(
     device const half4* probe [[buffer(0)]],
@@ -15,7 +16,7 @@ kernel void gv_similarity_scan(
 ) {
     float dot_val = 0.0;
     
-    // Rank is dimensionality. v_rank is rank/4 for half4 SIMD.
+    // rank is the vector dimension. v_rank is the number of half4 elements.
     uint v_rank = rank >> 2;
     uint offset = id * v_rank;
     
