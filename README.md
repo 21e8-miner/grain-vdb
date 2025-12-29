@@ -1,76 +1,77 @@
 # GrainVDB 🌾
-### Native Metal Vector Engine for Apple Silicon
-**High-performance Similarity Search via Unified Memory Optimization**
+### Native Metal-Accelerated Vector Engine for Apple Silicon
+**High-Performance Similarity Search via Unified Memory Optimization**
 
-GrainVDB is a native vector engine built specifically for macOS and Apple Silicon. It bypasses the overhead of standard frameworks by using a direct Objective-C++ bridge to Metal Performance Shaders, enabling efficient brute-force search on massive vector manifolds.
+GrainVDB is a native vector engine built for macOS and Apple Silicon. It utilizes a direct Objective-C++/Metal bridge to bypass the overhead of standard AI frameworks, enabling massive-scale similarity discovery with minimal latency.
 
 ---
 
-## 📊 Industrial Benchmark (1 Million Vectors)
+## 📊 Performance (1 Million x 128D Vectors)
 | Metric | CPU (NumPy Partition) | **GrainVDB (Native Metal)** |
 |--------|----------------------|-----------------------|
-| Query Latency (k=10) | ~18 ms | **~4.9 ms** |
-| Throughput | 55.5 req/s | **204.1 req/s** |
+| **End-to-End Latency** | ~18.3 ms | **~12.2 ms** |
+| **Throughput** | 54.6 req/s | **82.0 req/s** |
 
-**Hardware**: MacBook M2 (Unified Memory).
-**Methodology**: Measurements denote end-to-end query latency for similarity computation and top-k selection on pre-normalized unit vectors.
-- **CPU Baseline**: Uses `np.argpartition` for efficient partial sort (O(N) complexity).
-- **GrainVDB**: Accelerates the similarity discovery (Matrix-Vector multiplication) via custom Metal kernels. The top-k selection is performed on the CPU using a priority queue over the shared unified memory buffer.
+**Hardware**: MacBook M2 (Unified Memory).  
+**Methodology**:
+- **Wall-Time Measurement**: Latency is measured end-to-end at the Python boundary, including the bridge overhead and Top-k selection.
+- **CPU Baseline**: Highly optimized NumPy implementation using `np.argpartition` ($O(N)$ partial sort) on pre-normalized vectors.
+- **GrainVDB**: Brute-force discovery on GPU (Metal) + Priority Queue selection on CPU. Unified Memory ensures zero-copy access between the device and host buffers.
 
 ---
 
-## 🔬 Core Technologies
+## 🔬 Core Architecture
 
 ### 1. Unified Memory Bridge
-GrainVDB utilizes Apple Silicon's Unified Memory Architecture. By mapping host-side Python buffers directly into the GPU's address space using `MTLBuffer(options: .storageModeShared)`, we eliminate expensive memory copies. The GPU performs the heavy dot-product calculations directly on the source data.
+GrainVDB exploits the shared memory architecture of M-series chips. By mapping Python buffers into the GPU's address space using `storageModeShared` MTLBuffers, the engine avoids the data serialization and copy bottlenecks typical of PCIe-based systems.
 
 ### 2. Custom Metal Kernels
-The engine dispatches custom Metal Shading Language (MSL) kernels optimized for the M-series GPU. These kernels perform vectorized `half4` operations, maximizing throughput for high-dimensional similarity resolution.
+Similarity resolution is performed by vectorized `half4` kernels written in Metal Shading Language (MSL). These kernels are designed to saturate the GPU's memory bandwidth while maintaining high floating-point throughput.
 
-### 3. Context Consistency Audit
-To identify "Semantic Fractures" (where top results come from logically inconsistent clusters), GrainVDB includes a topological audit layer. It calculates the **Neighborhood Connectivity** (average pairwise similarity above a threshold) to help identify potential RAG hallucinations.
+### 3. Neighborhood Consistency Audit
+To mitigate retrieval noise and potential RAG hallucinations, GrainVDB includes a built-in **Audit Layer**. It calculates the **Neighborhood Connectivity Score** (the density of semantic relationships among the top results). A low score indicates a "Context Fracture," signaling that the retrieved results are semantically disjointed.
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Installation & Usage
 
-### 1. Build the Native Core
-GrainVDB requires a native build to link against your local Metal frameworks:
+### 1. Build from Source
+GrainVDB compiles its native core locally to match your hardware's Metal framework version.
 ```bash
 chmod +x build.sh
 ./build.sh
 ```
 
-### 2. Run the Benchmark
+### 2. Run the Technical Benchmark
 ```bash
-python3 main.py
+python3 benchmark.py
 ```
 
-### 3. Basic Implementation
+### 3. Integration Example
 ```python
 from grainvdb.engine import GrainVDB
 import numpy as np
 
-# Initialize with 128-dimensional vectors
+# Initialize engine for 128-dimensional vectors
 vdb = GrainVDB(dim=128)
 
 # Add 1 million vectors (Normalized internally)
-vectors = np.random.randn(1000000, 128).astype(np.float32)
-vdb.add_vectors(vectors)
+data = np.random.randn(1000000, 128).astype(np.float32)
+vdb.add_vectors(data)
 
-# Query in ~5ms
-indices, scores, latency_ms = vdb.query(np.random.randn(128), k=10)
+# Query in ~12ms
+indices, scores, e2e_ms = vdb.query(np.random.randn(128), k=10)
 
-# Check context consistency
-score = vdb.audit_consistency(indices)
+# Verify neighborhood consistency
+density = vdb.audit(indices)
 ```
 
 ---
 
 ## 🏗️ Engineering Roadmap
-- [ ] **Quantized Storage**: INT8 and INT4 storage for 10M+ vector scales.
-- [ ] **GPU-Side Selection**: Implementing Bitonic Sort or Heap-select on-GPU to furtherize reduce CPU overhead.
-- [ ] **Sheaf-theoretic Graph RAG**: Formal Çech cohomology for multi-hop manifold verification.
+- [ ] **Quantized INT8/INT4 Storage**: Support for 10M+ vector manifolds on memory-constrained devices.
+- [ ] **GPU-Side Selection**: Moving the Top-k priority queue into the Metal kernel for sub-3ms resolution.
+- [ ] **Native C-API / Rust Bindings**: Direct integration for low-latency systems.
 
 ---
 
