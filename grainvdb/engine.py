@@ -9,10 +9,16 @@ class GrainVDB:
     High-performance vector search for Apple Silicon via Unified Memory.
     No PyTorch dependencies. Purely native implementation.
     """
-    def __init__(self, dim: int = 128):
+    def __init__(self, dim: int = 128, max_k: int = 100):
         self.dim = dim
+        self.max_k = max_k
         self.lib = None
         self.ctx = None
+        
+        # Pre-allocate result buffers for zero-copy-like speed
+        self._idx_buf = np.zeros(max_k, dtype=np.uint64)
+        self._score_buf = np.zeros(max_k, dtype=np.float32)
+        
         self._load_library()
         
     def _load_library(self):
@@ -78,10 +84,12 @@ class GrainVDB:
 
     def query(self, query_vec: np.ndarray, k: int = 10) -> Tuple[np.ndarray, np.ndarray, float]:
         """
-        Executes native GPU search + CPU top-f selection.
+        Executes native GPU search + CPU top-k selection.
         Returns: (indices, scores, kernel_execution_ms).
-        Note: kernel_execution_ms is the time spent in the C++ driver (dispatch + wait + select).
         """
+        if k > self.max_k:
+            raise ValueError(f"Requested k={k} exceeds max_k={self.max_k}")
+
         # Normalize probe
         q_norm = query_vec.astype(np.float32)
         q_norm = q_norm / (np.linalg.norm(q_norm) + 1e-9)
@@ -89,16 +97,15 @@ class GrainVDB:
         probe = np.ascontiguousarray(q_norm, dtype=np.float32)
         p_ptr = probe.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
         
-        idx = np.zeros(k, dtype=np.uint64)
-        scores = np.zeros(k, dtype=np.float32)
-        
-        idx_ptr = idx.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
-        score_ptr = scores.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
+        # Use pre-allocated buffers
+        idx_ptr = self._idx_buf.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64))
+        score_ptr = self._score_buf.ctypes.data_as(ctypes.POINTER(ctypes.c_float))
         
         # Time measured in C++ layer
         kernel_ms = self.lib.gv1_manifold_fold(self.ctx, p_ptr, k, idx_ptr, score_ptr)
         
-        return idx, scores, kernel_ms
+        # Return Sliced Views (Zero Copy)
+        return self._idx_buf[:k], self._score_buf[:k], kernel_ms
 
     def audit(self, indices: np.ndarray) -> float:
         """

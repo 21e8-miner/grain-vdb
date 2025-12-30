@@ -1,7 +1,11 @@
 /**
  * @file grainvdb.mm
- * @brief Native Metal Driver for GrainVDB
+ * @brief Native Metal Driver for GrainVDB (Hardened v1.1)
  * Licensed under the MIT License.
+ *
+ * Optimizations:
+ * - Pre-allocated query & score buffers (avoid per-query malloc)
+ * - Fixed deprecated API warning (newLibraryWithURL)
  */
 
 #include "gv_core.h"
@@ -64,6 +68,11 @@ struct gv1_state_t {
   id<MTLBuffer> manifold;
   uint32_t count;
   id<MTLLibrary> lib;
+
+  // Pre-allocated query buffers (Hardening)
+  id<MTLBuffer> probe_buf;
+  id<MTLBuffer> score_buf;
+  uint32_t max_count; // Capacity of score_buf
 };
 
 gv1_state_t *gv1_ctx_create(uint32_t rank, const char *library_path) {
@@ -74,15 +83,25 @@ gv1_state_t *gv1_ctx_create(uint32_t rank, const char *library_path) {
   state->q = [state->dev newCommandQueue];
   state->rnk = rank;
   state->count = 0;
+  state->max_count = 0;
   state->manifold = nil;
+  state->probe_buf = nil;
+  state->score_buf = nil;
 
   NSError *err = nil;
-  NSString *path = [NSString stringWithUTF8String:library_path];
-  state->lib = [state->dev newLibraryWithFile:path error:&err];
+
+  // Use newLibraryWithURL to fix deprecation warning
+  NSString *pathStr = [NSString stringWithUTF8String:library_path];
+  NSURL *url = [NSURL fileURLWithPath:pathStr];
+  state->lib = [state->dev newLibraryWithURL:url error:&err];
 
   if (!state->lib) {
     std::cerr << "[GrainVDB Native] Error loading Metal library from: "
               << library_path << std::endl;
+    if (err) {
+      std::cerr << "  Metal Error: " << [[err localizedDescription] UTF8String]
+                << std::endl;
+    }
     delete state;
     return nullptr;
   }
@@ -105,6 +124,11 @@ gv1_state_t *gv1_ctx_create(uint32_t rank, const char *library_path) {
     return nullptr;
   }
 
+  // Pre-allocate probe buffer (fixed size = rank * sizeof(half))
+  state->probe_buf =
+      [state->dev newBufferWithLength:rank * sizeof(gv_half_t)
+                              options:MTLResourceStorageModeShared];
+
   return state;
 }
 
@@ -122,6 +146,14 @@ void gv1_data_feed(gv1_state_t *state, const float *buffer, uint32_t count) {
     dst[i] = f32_to_f16(buffer[i]);
   }
   state->count = count;
+
+  // Pre-allocate score buffer now that we know the count
+  if (state->score_buf == nil || state->max_count < count) {
+    state->score_buf =
+        [state->dev newBufferWithLength:count * sizeof(float)
+                                options:MTLResourceStorageModeShared];
+    state->max_count = count;
+  }
 }
 
 float gv1_manifold_fold(gv1_state_t *state, const float *probe, uint32_t top,
@@ -129,29 +161,21 @@ float gv1_manifold_fold(gv1_state_t *state, const float *probe, uint32_t top,
   if (state->count == 0 || !state->manifold)
     return 0.0f;
 
-  // 1. Prepare Query Buffer
-  id<MTLBuffer> p_buf =
-      [state->dev newBufferWithLength:state->rnk * sizeof(gv_half_t)
-                              options:MTLResourceStorageModeShared];
-  gv_half_t *qp = (gv_half_t *)[p_buf contents];
+  // 1. Fill pre-allocated probe buffer (no alloc)
+  gv_half_t *qp = (gv_half_t *)[state->probe_buf contents];
   for (uint32_t i = 0; i < state->rnk; i++)
     qp[i] = f32_to_f16(probe[i]);
 
-  // 2. Prepare Score Buffer
-  id<MTLBuffer> s_buf =
-      [state->dev newBufferWithLength:state->count * sizeof(float)
-                              options:MTLResourceStorageModeShared];
-
-  // START WALL-TIME CLOCK: includes GPU overhead and host-side selection
+  // START WALL-TIME CLOCK
   auto t_start = std::chrono::high_resolution_clock::now();
 
-  // 3. Dispatch GPU Scan
+  // 2. Dispatch GPU Scan (using pre-allocated buffers)
   id<MTLCommandBuffer> c_buf = [state->q commandBuffer];
   id<MTLComputeCommandEncoder> enc = [c_buf computeCommandEncoder];
   [enc setComputePipelineState:state->p_state];
-  [enc setBuffer:p_buf offset:0 atIndex:0];
+  [enc setBuffer:state->probe_buf offset:0 atIndex:0];
   [enc setBuffer:state->manifold offset:0 atIndex:1];
-  [enc setBuffer:s_buf offset:0 atIndex:2];
+  [enc setBuffer:state->score_buf offset:0 atIndex:2];
   [enc setBytes:&state->rnk length:sizeof(uint32_t) atIndex:3];
 
   MTLSize g_sz = MTLSizeMake(state->count, 1, 1);
@@ -163,8 +187,8 @@ float gv1_manifold_fold(gv1_state_t *state, const float *probe, uint32_t top,
   [c_buf commit];
   [c_buf waitUntilCompleted];
 
-  // 4. Hybrid Selection: CPU Priority Queue for Top-K
-  float *scores = (float *)[s_buf contents];
+  // 3. Hybrid Selection: CPU Priority Queue for Top-K
+  float *scores = (float *)[state->score_buf contents];
   typedef std::pair<float, uint64_t> ScIx;
   std::priority_queue<ScIx, std::vector<ScIx>, std::greater<ScIx>> pq;
 
