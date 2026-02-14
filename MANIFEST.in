@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+include BREAKTHROUGHS.md
+include build.sh
+recursive-include src *.metal *.mm
+recursive-include include *.h
+recursive-include grainvdb *.dylib *.metallib
