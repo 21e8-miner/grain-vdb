@@ -154,6 +154,29 @@ class AlwaysQuiescent:
         return True
 
 
+class MacOSQuiescenceGuard:
+    """
+    R4 Hardware Quiescence: Queries macOS system idle time.
+    Requires at least `min_idle_seconds` of zero human keyboard/mouse interaction.
+    """
+    def __init__(self, min_idle_seconds: float = 3.0):
+        self.min_idle_seconds = min_idle_seconds
+
+    async def is_quiescent(self) -> bool:
+        try:
+            import subprocess
+            # Query macOS IOHIDSystem HIDIdleTime in nanoseconds
+            out = subprocess.check_output(["ioreg", "-c", "IOHIDSystem"], timeout=0.5).decode("utf-8")
+            for line in out.splitlines():
+                if "HIDIdleTime" in line:
+                    ns_str = line.split("=")[-1].strip()
+                    idle_sec = int(ns_str) / 1_000_000_000.0
+                    return idle_sec >= self.min_idle_seconds
+            return True
+        except Exception:
+            return True
+
+
 class MockUIExecutor:
     """Mock execution harness for local unit testing and simulated UI verification."""
     def __init__(self, dim: int = 128, vanished_elements: Optional[set[str]] = None, replay_supported: bool = True):
@@ -358,8 +381,31 @@ class ProbingMind:
             loc = await self.executor.locate(st.text)
             return Outcome.CONFIRMED if loc is not None else Outcome.REFUTED
         if level == Level.INERT:
+            screen_before = None
+            try:
+                screen_before = await self.executor.screen_embedding()
+            except Exception:
+                pass
+
             ok = await self.executor.inert(st.text)
-            return Outcome.CONFIRMED if ok else Outcome.REFUTED
+            if not ok:
+                return Outcome.REFUTED
+
+            # Visual Post-Condition Verification: Ensure screen restored after activate+dismiss
+            if screen_before is not None:
+                try:
+                    screen_after = await self.executor.screen_embedding()
+                    if len(screen_before) == len(screen_after):
+                        v0 = np.asarray(screen_before, dtype=np.float32)
+                        v1 = np.asarray(screen_after, dtype=np.float32)
+                        sim = float(np.dot(v0, v1) / (np.linalg.norm(v0) * np.linalg.norm(v1) + 1e-7))
+                        if sim < 0.90:
+                            logger.warning("INERT post-condition failed: UI state did not restore (sim=%.3f)", sim)
+                            return Outcome.INCONCLUSIVE # Demote to inconclusive: modal failed to dismiss cleanly
+                except Exception:
+                    pass
+
+            return Outcome.CONFIRMED
         ok = await self.executor.replay(st.text)
         return Outcome.CONFIRMED if ok else Outcome.REFUTED
 

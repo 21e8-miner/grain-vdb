@@ -161,3 +161,60 @@ class GrainVDBVectorStore(VectorStore):
         store = cls(embedding=embedding, dim=dim, mode=mode, engine=engine, **kwargs)
         store.add_texts(texts=texts, metadatas=metadatas)
         return store
+
+
+class CuaReplayTool:
+    """
+    Agent Tool for LangChain, CrewAI, AutoGen, and LlamaIndex agents.
+    Provides sub-millisecond semantic search against past interaction history.
+    """
+    name: str = "cua_semantic_replay"
+    description: str = "Search past visual and action history of the computer use agent to find relevant sequence IDs and UI states."
+
+    def __init__(self, memory_engine: Any, embedder: Optional[Callable[[str], List[float]]] = None):
+        self.memory = memory_engine
+        self.embedder = embedder
+
+    def run(self, query: str, k: int = 3, app_filter: Optional[str] = None) -> str:
+        """Executes semantic recall and returns structured context."""
+        if self.embedder is not None:
+            vec = self.embedder(query)
+            results = self.memory.semantic_recall(vec, k=k, app_filter=app_filter)
+        else:
+            results = self.memory.hybrid_recall(query, k=k, app_filter=app_filter)
+            
+        if not results:
+            return "No matching agent history found."
+            
+        lines = []
+        for r in results:
+            lines.append(
+                f"- [Seq #{r.get('cua_sequence')}] App: {r.get('app', 'N/A')} | "
+                f"Context: '{r.get('semantic_context', '')}' (Similarity: {r.get('similarity_score', 0.0):.3f})"
+            )
+        return "\n".join(lines)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> str:
+        return self.run(*args, **kwargs)
+
+
+class CuaAuditTool:
+    """
+    Agent Tool for cryptographic proof verification and non-repudiation audit inspection.
+    """
+    name: str = "cua_secure_audit"
+    description: str = "Inspect the tamper-proof cryptographic audit trail and outcome for a specific Cua action sequence ID."
+
+    def __init__(self, memory_engine: Any):
+        self.memory = memory_engine
+
+    def run(self, sequence_id: int) -> str:
+        """Audits a sequence ID and returns cryptographic proof."""
+        import json
+        proof = self.memory.secure_audit(int(sequence_id))
+        if not proof:
+            return f"No cryptographic audit proof found for Sequence #{sequence_id}."
+        return json.dumps(proof, indent=2)
+
+    def __call__(self, *args: Any, **kwargs: Any) -> str:
+        return self.run(*args, **kwargs)

@@ -189,6 +189,44 @@ class TestHandsIRB(unittest.IsolatedAsyncioTestCase):
         self.assertIsNotNone(st_vanished)
         self.assertGreater(st_vanished.probes, 0)
 
+    # -------------------------------------------------------------------------
+    # macOS Quiescence & Post-Condition Visual Verification
+    # -------------------------------------------------------------------------
+    async def test_macos_quiescence_guard(self):
+        """Test MacOSQuiescenceGuard query fallback."""
+        from grainvdb.integrations.cua_hands import MacOSQuiescenceGuard
+        guard = MacOSQuiescenceGuard(min_idle_seconds=0.0)
+        # Should return boolean without throwing exception
+        is_idle = await guard.is_quiescent()
+        self.assertIsInstance(is_idle, bool)
+
+    async def test_inert_post_condition_verification(self):
+        """Test that INERT probes verify visual post-condition state restoration."""
+        class DirtyExecutor(MockUIExecutor):
+            def __init__(self, dim: int):
+                super().__init__(dim=dim)
+                self.calls = 0
+
+            async def screen_embedding(self) -> list[float]:
+                self.calls += 1
+                # If called after inert, return orthogonal screen direction (simulating corrupted state)
+                if self.calls > 1:
+                    return [-0.5 if j % 2 == 0 else 0.5 for j in range(self.dim)]
+                return [0.1] * self.dim
+
+        executor = DirtyExecutor(dim=8)
+        mind = ProbingMind(dim=8, executor=executor, ladder_window_s=100.0)
+        await mind.record_episode(1, "click menu File", [0.1] * 8)
+        
+        # Manually set probe level to 1 to allow Level.INERT probe
+        st = mind.ledger.get(1)
+        st.probe_level = 1
+        st.last_probed_ts = time.time()
+
+        outcome = await mind._run_probe(st, Level.INERT)
+        # Should collapse to INCONCLUSIVE because visual screen did not restore cleanly!
+        self.assertEqual(outcome, Outcome.INCONCLUSIVE)
+
 
 if __name__ == "__main__":
     unittest.main()

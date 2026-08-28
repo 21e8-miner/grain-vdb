@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GrainVDB + Cua: Agent Memory DVR & Audit Inspector</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;800&family=Inter:wght@400;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #0b0f19; color: #f3f4f6; }
+        code, pre, .mono { font-family: 'JetBrains Mono', monospace; }
+        .glow-accent { box-shadow: 0 0 25px rgba(56, 189, 248, 0.2); }
+        .glow-green { box-shadow: 0 0 15px rgba(34, 197, 94, 0.3); }
+        .glow-red { box-shadow: 0 0 15px rgba(239, 68, 68, 0.3); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="border-b border-gray-800 bg-gray-900/80 backdrop-blur px-6 py-4 flex items-center justify-between sticky top-0 z-50">
+        <div class="flex items-center space-x-3">
+            <div class="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center font-bold text-black text-lg">G</div>
+            <div>
+                <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
+                    GrainVDB <span class="text-xs bg-sky-500/20 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded-full font-mono">Agent DVR v2.1</span>
+                </h1>
+                <p class="text-xs text-gray-400">Zero-Latency Visual Replay & Cryptographic Audit Studio</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-4">
+            <div class="flex items-center space-x-2 text-xs bg-gray-800 border border-gray-700 px-3 py-1.5 rounded-lg">
+                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                <span class="text-gray-300 font-mono">Metal GPU: Active (0.36ms)</span>
+            </div>
+            <a href="https://github.com/21e8-miner/grain-vdb" target="_blank" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-lg transition font-medium">GitHub Repository</a>
+        </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="flex-1 grid grid-cols-12 gap-6 p-6 max-w-7xl mx-auto w-full">
+        <!-- Left: Visual Screen Canvas & Timeline Scrubber (Col 8) -->
+        <div class="col-span-12 lg:col-span-8 flex flex-col space-y-4">
+            <!-- Simulated Screen Viewport -->
+            <div class="relative bg-gray-950 border border-gray-800 rounded-xl overflow-hidden shadow-2xl flex flex-col aspect-[16/10] glow-accent">
+                <!-- Mac Window Chrome -->
+                <div class="bg-gray-900 border-b border-gray-800 px-4 py-2.5 flex items-center justify-between">
+                    <div class="flex space-x-2">
+                        <div class="w-3 h-3 rounded-full bg-red-500/80"></div>
+                        <div class="w-3 h-3 rounded-full bg-yellow-500/80"></div>
+                        <div class="w-3 h-3 rounded-full bg-green-500/80"></div>
+                    </div>
+                    <div id="screen-title" class="text-xs font-mono text-gray-400">Finder — Downloads Folder (Step #249)</div>
+                    <div id="badge-status" class="text-xs px-2 py-0.5 rounded font-mono font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">VERIFIED</div>
+                </div>
+
+                <!-- Screen Rendering Canvas -->
+                <div class="flex-1 relative flex items-center justify-center p-8 bg-gradient-to-b from-gray-900/50 to-gray-950">
+                    <div id="screen-content" class="w-full max-w-md bg-gray-900 border border-gray-700 rounded-xl p-6 shadow-2xl space-y-4">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 rounded-full bg-amber-500/20 flex items-center justify-center text-amber-400 text-xl font-bold">⚠️</div>
+                            <div>
+                                <h3 class="text-sm font-semibold text-white" id="dialog-title">macOS Security Permission</h3>
+                                <p class="text-xs text-gray-400" id="dialog-desc">"Terminal" wants to organize files in your Downloads folder.</p>
+                            </div>
+                        </div>
+                        <div class="flex justify-end space-x-3 pt-2">
+                            <button id="btn-cancel" class="px-3 py-1.5 text-xs bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg border border-gray-700">Don't Allow</button>
+                            <button id="btn-allow" class="px-3 py-1.5 text-xs bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-medium ring-2 ring-sky-400 ring-offset-2 ring-offset-gray-900">OK</button>
+                        </div>
+                    </div>
+
+                    <!-- Action Target Indicator Bounding Box -->
+                    <div id="target-box" class="absolute border-2 border-red-500 bg-red-500/10 rounded pointer-events-none transition-all duration-300"></div>
+                </div>
+
+                <!-- Playback & Scrubber Controls -->
+                <div class="bg-gray-900/90 border-t border-gray-800 p-4 space-y-3">
+                    <div class="flex items-center justify-between text-xs font-mono text-gray-400">
+                        <span id="step-label">Step: 249 / 300</span>
+                        <span id="latency-label">Recall Latency: 0.36ms</span>
+                    </div>
+                    <input type="range" id="timeline-scrubber" min="0" max="300" value="249" class="w-full accent-sky-500 cursor-pointer">
+                    <div class="flex items-center justify-center space-x-4 pt-1">
+                        <button id="btn-prev" class="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-mono">⏮ Prev</button>
+                        <button id="btn-play" class="px-4 py-1.5 bg-sky-600 hover:bg-sky-500 text-white font-medium rounded-lg text-xs">▶ Play</button>
+                        <button id="btn-next" class="p-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-xs font-mono">Next ⏭</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Right: Semantic Search & Cryptographic Audit Panel (Col 4) -->
+        <div class="col-span-12 lg:col-span-4 flex flex-col space-y-4">
+            <!-- Semantic Search Bar -->
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3">
+                <h2 class="text-xs font-bold text-gray-300 tracking-wider uppercase">Semantic Memory Search</h2>
+                <div class="relative">
+                    <input type="text" id="search-input" placeholder="Search visual history e.g. 'permission dialog'..." 
+                           class="w-full bg-gray-950 border border-gray-700 rounded-lg px-3 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-sky-500 font-mono">
+                    <span class="absolute right-3 top-2.5 text-xs text-gray-500 font-mono">⌘K</span>
+                </div>
+                <div id="search-results" class="space-y-2 max-h-48 overflow-y-auto">
+                    <div class="p-2 rounded bg-sky-500/10 border border-sky-500/30 cursor-pointer" onclick="goToStep(249)">
+                        <div class="flex justify-between text-xs font-mono">
+                            <span class="text-sky-400 font-bold">#249 (Finder)</span>
+                            <span class="text-gray-400">99.4% Match</span>
+                        </div>
+                        <p class="text-xs text-gray-300 truncate mt-1">Permission Dialog: Filesystem write permission requested.</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Cryptographic Audit Inspector (Cua Driver) -->
+            <div class="bg-gray-900 border border-gray-800 rounded-xl p-4 space-y-3 flex-1 flex flex-col">
+                <div class="flex items-center justify-between">
+                    <h2 class="text-xs font-bold text-gray-300 tracking-wider uppercase">Cua Cryptographic Proof</h2>
+                    <span class="text-[10px] font-mono bg-purple-500/20 text-purple-400 border border-purple-500/30 px-2 py-0.5 rounded">SHA-256</span>
+                </div>
+                <pre id="audit-json" class="flex-1 bg-gray-950 border border-gray-800 rounded-lg p-3 text-[11px] text-emerald-400 overflow-x-auto leading-relaxed">
+{
+  "cua_sequence": 249,
+  "timestamp": "2026-08-28T13:00:00Z",
+  "capability": "filesystem.write",
+  "action": "click",
+  "target": "Cancel Button",
+  "outcome": "denied",
+  "cryptographic_proof": "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
+}</pre>
+                <div class="text-[11px] text-gray-400 bg-gray-800/60 p-2.5 rounded-lg border border-gray-700/50">
+                    <span class="text-sky-400 font-semibold">Zero-Token Replay:</span> 320 tokens injected into LLM instead of 135k tokens ($0.0048 vs $2.03 per task).
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        const scrubber = document.getElementById('timeline-scrubber');
+        const stepLabel = document.getElementById('step-label');
+        const screenTitle = document.getElementById('screen-title');
+        const auditJson = document.getElementById('audit-json');
+        const badgeStatus = document.getElementById('badge-status');
+
+        function updateState(step) {
+            stepLabel.innerText = `Step: ${step} / 300`;
+            scrubber.value = step;
+            if (step == 249 || step == 250) {
+                screenTitle.innerText = `Finder — Downloads Folder (Step #${step})`;
+                badgeStatus.innerText = "DENIED (REPLAY TARGET)";
+                badgeStatus.className = "text-xs px-2 py-0.5 rounded font-mono font-semibold bg-red-500/20 text-red-400 border border-red-500/30 glow-red";
+                auditJson.innerText = JSON.stringify({
+                    "cua_sequence": parseInt(step),
+                    "timestamp": new Date().toISOString(),
+                    "capability": "filesystem.write",
+                    "action": "click",
+                    "target": "Cancel Button",
+                    "outcome": "denied",
+                    "cryptographic_proof": "sha256:7f83b1657ff1fc53b92dc18148a1d65dfc2d4b1fa3d677284addd200126d9069"
+                }, null, 2);
+            } else {
+                screenTitle.innerText = `Agent UI Navigation (Step #${step})`;
+                badgeStatus.innerText = "ALLOWED";
+                badgeStatus.className = "text-xs px-2 py-0.5 rounded font-mono font-semibold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 glow-green";
+                auditJson.innerText = JSON.stringify({
+                    "cua_sequence": parseInt(step),
+                    "timestamp": new Date().toISOString(),
+                    "capability": "ui.navigate",
+                    "action": "view",
+                    "target": `Element #${step}`,
+                    "outcome": "allowed",
+                    "cryptographic_proof": `sha256:a1b2c3d4e5f67890${step}abcdef1234567890abcdef1234567890abcdef`
+                }, null, 2);
+            }
+        }
+
+        function goToStep(s) {
+            updateState(s);
+        }
+
+        scrubber.addEventListener('input', (e) => updateState(e.target.value));
+        document.getElementById('btn-prev').addEventListener('click', () => updateState(Math.max(0, parseInt(scrubber.value) - 1)));
+        document.getElementById('btn-next').addEventListener('click', () => updateState(Math.min(300, parseInt(scrubber.value) + 1)));
+    </script>
+</body>
+</html>

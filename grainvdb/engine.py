@@ -235,6 +235,13 @@ class GrainVDB:
         
         self._lib.gv2_hnsw_build.argtypes = [ctypes.c_void_p]
         self._lib.gv2_hnsw_build.restype = ctypes.c_bool
+
+        self._lib.gv2_hnsw_insert.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.POINTER(ctypes.c_float),
+        ]
+        self._lib.gv2_hnsw_insert.restype = ctypes.c_bool
         
         class C_AuditResult(ctypes.Structure):
             _fields_ = [
@@ -601,6 +608,58 @@ class GrainVDB:
                 self._check_error()
             
             return self
+
+    def insert_vector_hnsw(
+        self,
+        vector: Union[List[float], np.ndarray],
+        id: Optional[int] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> int:
+        """
+        Dynamically insert a single vector into both storage and active HNSW graph.
+        
+        Args:
+            vector: 1D embedding vector
+            id: Optional custom 64-bit integer ID
+            metadata: Optional metadata dictionary
+            
+        Returns:
+            Assigned vector ID
+        """
+        with self._lock:
+            vec = np.asarray(vector, dtype=np.float32).flatten()
+            if len(vec) != self.dim:
+                raise ValueError(f"Vector dimension mismatch: expected {self.dim}, got {len(vec)}")
+            
+            if self.distance == DistanceMetric.COSINE:
+                norm = np.linalg.norm(vec)
+                if norm > 1e-7:
+                    vec = vec / norm
+            
+            target_id = id if id is not None else self.vector_count
+            
+            # Add to primary vector storage
+            ids_arr = np.array([target_id], dtype=np.uint64)
+            vec_2d = vec.reshape(1, -1)
+            self._lib.gv2_add_vectors(
+                self._ctx,
+                vec_2d.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                1,
+                ids_arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+            )
+            
+            # Dynamically insert into HNSW graph
+            self._lib.gv2_hnsw_insert(
+                self._ctx,
+                ctypes.c_uint64(target_id),
+                vec.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            )
+            
+            if metadata is not None:
+                self._metadata[int(target_id)] = metadata
+                
+            self._vector_count = self.vector_count
+            return int(target_id)
     
     def search(
         self,

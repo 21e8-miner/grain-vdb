@@ -220,6 +220,9 @@ void gv2_free_batch_results(gv2_search_result_t** results, uint32_t count);
 /* Build HNSW index (required before approximate search) */
 bool gv2_hnsw_build(gv2_context_t* ctx);
 
+/* Dynamically insert a single vector into existing HNSW graph */
+bool gv2_hnsw_insert(gv2_context_t* ctx, uint64_t id, const float* vector);
+
 /* Get HNSW index statistics */
 typedef struct {
     uint32_t num_nodes;

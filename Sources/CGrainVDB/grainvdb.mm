@@ -1208,6 +1208,105 @@ bool gv2_hnsw_build(gv2_context_t *ctx) {
   return true;
 }
 
+bool gv2_hnsw_insert(gv2_context_t *ctx, uint64_t id, const float *vector) {
+  if (!ctx || !vector) {
+    set_error(ctx, "Invalid arguments to gv2_hnsw_insert");
+    return false;
+  }
+
+  std::unique_lock<std::shared_mutex> lock(ctx->vector_mutex);
+
+  if (!ctx->hnsw_graph) {
+    ctx->hnsw_graph = new HNSWGraph();
+  }
+
+  HNSWGraph *graph = ctx->hnsw_graph;
+  uint32_t dim = ctx->config.dimension;
+  uint32_t M = ctx->config.hnsw.M > 0 ? ctx->config.hnsw.M : 16;
+  uint32_t idx = (uint32_t)graph->nodes.size();
+
+  std::vector<float> vec(vector, vector + dim);
+  uint32_t level = get_random_level(graph, graph->ml);
+  level = std::min(level, (uint32_t)16);
+
+  HNSWNode node;
+  node.id = idx;
+  node.level = level;
+  node.vector = vec;
+
+  if (idx > 0) {
+    uint32_t curr = graph->entry_point;
+    float curr_dist = compute_distance(vec, graph->nodes[curr].vector);
+    bool changed = true;
+    while (changed) {
+      changed = false;
+      for (uint32_t neighbor : graph->nodes[curr].neighbors) {
+        if (neighbor >= idx) continue;
+        float dist = compute_distance(vec, graph->nodes[neighbor].vector);
+        if (dist > curr_dist) {
+          curr = neighbor;
+          curr_dist = dist;
+          changed = true;
+        }
+      }
+    }
+
+    typedef std::pair<float, uint32_t> DistNode;
+    std::priority_queue<DistNode> candidates;
+    std::vector<DistNode> found_nodes;
+    std::vector<bool> visited(idx, false);
+
+    candidates.push({curr_dist, curr});
+    visited[curr] = true;
+    found_nodes.push_back({curr_dist, curr});
+
+    uint32_t ef_c = std::max(ctx->config.hnsw.ef_construction, (uint32_t)100);
+
+    while (!candidates.empty() && found_nodes.size() < ef_c) {
+      auto c = candidates.top();
+      candidates.pop();
+
+      for (uint32_t neighbor : graph->nodes[c.second].neighbors) {
+        if (neighbor >= idx || visited[neighbor]) continue;
+        visited[neighbor] = true;
+
+        float dist = compute_distance(vec, graph->nodes[neighbor].vector);
+        candidates.push({dist, neighbor});
+        found_nodes.push_back({dist, neighbor});
+      }
+    }
+
+    std::sort(found_nodes.begin(), found_nodes.end(), [](const DistNode &a, const DistNode &b) {
+      return a.first > b.first;
+    });
+
+    uint32_t max_neighbors = (level == 0) ? M * 2 : M;
+    uint32_t added = 0;
+    for (const auto &fn : found_nodes) {
+      if (added >= max_neighbors) break;
+      uint32_t neighbor_idx = fn.second;
+      node.neighbors.push_back(neighbor_idx);
+      auto &neighbor_edges = graph->nodes[neighbor_idx].neighbors;
+      neighbor_edges.push_back(idx);
+      if (neighbor_edges.size() > max_neighbors * 2) {
+        neighbor_edges.erase(neighbor_edges.begin());
+      }
+      added++;
+    }
+  }
+
+  graph->nodes.push_back(node);
+  graph->id_to_idx[id] = idx;
+
+  if (level > graph->max_level || idx == 0) {
+    graph->max_level = level;
+    graph->entry_point = idx;
+  }
+
+  ctx->hnsw_built = true;
+  return true;
+}
+
 bool gv2_hnsw_get_stats(gv2_context_t *ctx, gv2_hnsw_stats_t *stats) {
   if (!ctx || !stats)
     return false;

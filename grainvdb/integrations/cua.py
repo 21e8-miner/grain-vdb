@@ -248,6 +248,110 @@ class CuaGrainMemory:
             print(f"[CuaGrainMemory Error] Audit execution error: {e}")
             return None
 
+    def hierarchical_recall(
+        self,
+        global_query_embedding: Union[List[float], np.ndarray],
+        patch_query_embedding: Optional[Union[List[float], np.ndarray]] = None,
+        alpha: float = 0.6,
+        k: int = 5,
+        app_filter: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Hierarchical Multimodal Recall: Fuses global 4K desktop scene embedding with
+        high-resolution ROI localized patch embedding to resolve fine-grained UI micro-elements.
+        
+        Args:
+            global_query_embedding: 1D global screen vector
+            patch_query_embedding: Optional 1D localized ROI patch vector
+            alpha: Weight for global score (1 - alpha weight for patch score)
+            k: Top-k matches to retrieve
+            app_filter: Optional application filter
+        """
+        global_results = self.semantic_recall(global_query_embedding, k=k*2, app_filter=app_filter)
+        if patch_query_embedding is None or not global_results:
+            return global_results[:k]
+            
+        # Re-score candidates using patch similarity
+        patch_vec = np.asarray(patch_query_embedding, dtype=np.float32).flatten()
+        p_norm = np.linalg.norm(patch_vec)
+        if p_norm > 1e-7:
+            patch_vec = patch_vec / p_norm
+            
+        scored_candidates = []
+        for r in global_results:
+            seq_id = r["cua_sequence"]
+            global_score = r["similarity_score"]
+            
+            # Check if candidate has stored patch embedding in extra metadata
+            meta = self.db.get_metadata(r["id"]) if "id" in r else None
+            stored_patch = meta.get("patch_vector") if meta else None
+            
+            if stored_patch is not None:
+                sp_vec = np.asarray(stored_patch, dtype=np.float32).flatten()
+                sp_norm = np.linalg.norm(sp_vec)
+                if sp_norm > 1e-7:
+                    sp_vec = sp_vec / sp_norm
+                patch_score = float(np.dot(patch_vec, sp_vec))
+                fused_score = alpha * global_score + (1.0 - alpha) * patch_score
+            else:
+                fused_score = global_score
+                
+            scored_candidates.append({
+                **r,
+                "fused_similarity_score": fused_score,
+                "global_similarity_score": global_score,
+            })
+            
+        scored_candidates.sort(key=lambda x: x.get("fused_similarity_score", 0.0), reverse=True)
+        return scored_candidates[:k]
+
+    def capture_screen(self, output_path: Optional[str] = None) -> bytes:
+        """
+        Captures live desktop screen natively on macOS using screencapture utility.
+        """
+        import tempfile, os
+        target = output_path or os.path.join(tempfile.gettempdir(), f"cua_screen_{int(time.time()*1000)}.png")
+        try:
+            subprocess.run(["screencapture", "-x", "-C", target], check=True, capture_output=True)
+            with open(target, "rb") as f:
+                data = f.read()
+            if not output_path and os.path.exists(target):
+                os.remove(target)
+            return data
+        except Exception as e:
+            logger_msg = f"Screen capture failed: {e}"
+            print(f"[CuaGrainMemory Warning] {logger_msg}")
+            return b""
+
+    def capture_and_record(
+        self,
+        cua_sequence_id: int,
+        semantic_text: str,
+        embedder: Optional[Callable[[bytes], List[float]]] = None,
+        app_name: Optional[str] = None,
+        action_type: Optional[str] = None
+    ) -> bool:
+        """
+        One-line capture and record: Takes desktop screenshot, embeds, and indexes into GrainVDB.
+        """
+        img_bytes = self.capture_screen()
+        if not img_bytes:
+            return False
+            
+        if embedder is not None:
+            embedding = embedder(img_bytes)
+        else:
+            # Fallback zero-vector if no embedder provided
+            embedding = [0.0] * self.dim
+            
+        return self.record_action(
+            cua_sequence_id=cua_sequence_id,
+            semantic_text=semantic_text,
+            screenshot_embedding=embedding,
+            app_name=app_name,
+            action_type=action_type
+        )
+
     def batch_secure_audit(self, cua_sequence_ids: List[int]) -> Dict[int, Optional[Dict[str, Any]]]:
         """Audits multiple sequence IDs in batch, leveraging cache."""
         return {seq_id: self.secure_audit(seq_id) for seq_id in cua_sequence_ids}

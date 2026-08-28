@@ -127,8 +127,12 @@ def agent_memory_main() -> int:
     replay_parser = subparsers.add_parser("replay", help="Run the full 60-second interactive Replay & Audit demo")
 
     # agent-memory bench
+    # bench
     bench_parser = subparsers.add_parser("bench", help="Benchmark memory replay latency & token cost reduction")
     bench_parser.add_argument("--steps", type=int, default=300, help="Number of simulated agent steps")
+
+    # dvr
+    dvr_parser = subparsers.add_parser("dvr", help="Launch interactive Agent DVR Visual Replay Studio in browser")
 
     args = parser.parse_args()
 
@@ -191,6 +195,18 @@ def agent_memory_main() -> int:
         root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
         demo_path = os.path.join(root_dir, "examples", "cua_memory_demo.py")
         os.system(f"{sys.executable} {demo_path}")
+        return 0
+
+    elif args.subcommand == "dvr":
+        import webbrowser
+        root_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+        dvr_path = os.path.join(root_dir, "docs", "agent_dvr.html")
+        if not os.path.exists(dvr_path):
+            print(f"\033[91mError: Agent DVR dashboard not found at {dvr_path}\033[0m")
+            return 1
+        print(f"\033[96m[Agent DVR Studio]\033[0m Opening Visual Replay & Audit Studio...")
+        print(f"  ✓ Dashboard File: \033[1m{dvr_path}\033[0m")
+        webbrowser.open(f"file://{dvr_path}")
         return 0
 
     elif args.subcommand == "bench":

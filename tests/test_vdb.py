@@ -263,6 +263,20 @@ class TestGrainVDB(unittest.TestCase):
         vdb.add_vectors(self.vectors)
         vdb.build_index()
         self.assertTrue(vdb.set_ef_search(128))
+
+    def test_incremental_hnsw_insertion(self):
+        """Test online streaming vector insertion into active HNSW graph."""
+        vdb = GrainVDB(dim=self.dim, mode=SearchMode.HNSW)
+        # Start by incrementally inserting 50 vectors
+        for i in range(50):
+            vdb.insert_vector_hnsw(self.vectors[i], id=i, metadata={"step": i})
+        self.assertEqual(vdb.vector_count, 50)
+
+        # Search should execute immediately without needing explicit build_index()
+        res = vdb.search(self.vectors[10], k=3)
+        self.assertEqual(len(res.indices), 3)
+        self.assertEqual(res.indices[0], 10) # Nearest neighbor to itself
+        self.assertEqual(res.metadata[0]["step"], 10)
         res = vdb.search(self.vectors[0], k=5)
         self.assertGreaterEqual(len(res.indices), 1)
 
