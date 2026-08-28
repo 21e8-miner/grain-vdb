@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 420" width="100%" height="100%">
+  <defs>
+    <linearGradient id="chartBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b0f19"/>
+      <stop offset="100%" stop-color="#111827"/>
+    </linearGradient>
+    <linearGradient id="redBar" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f87171"/>
+      <stop offset="100%" stop-color="#dc2626"/>
+    </linearGradient>
+    <linearGradient id="greenBar" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1000" height="420" fill="url(#chartBg)" rx="14"/>
+  <rect width="996" height="416" x="2" y="2" fill="none" stroke="#1f2937" stroke-width="2" rx="12"/>
+
+  <!-- Title -->
+  <text x="500" y="45" font-family="-apple-system, sans-serif" font-size="22" font-weight="800" fill="#ffffff" text-anchor="middle">
+    ENTERPRISE ROI: THE TOKEN ARBITRAGE ADVANTAGE
+  </text>
+  <text x="500" y="72" font-family="'JetBrains Mono', monospace" font-size="12" fill="#9ca3af" text-anchor="middle">
+    Annualized Compute Expenditure for a 25-Agent Enterprise Deployment (300 Steps / Task)
+  </text>
+
+  <!-- Metric 1: Annual Spend -->
+  <g transform="translate(50, 105)">
+    <text x="0" y="20" font-family="-apple-system, sans-serif" font-size="14" font-weight="700" fill="#e2e8f0">Annual API Compute Cost</text>
+    
+    <!-- Status Quo -->
+    <rect x="0" y="35" width="700" height="32" rx="6" fill="url(#redBar)"/>
+    <text x="20" y="56" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="700" fill="#ffffff">Status Quo (Context Window Stacking): $304,500 / year</text>
+    
+    <!-- GrainVDB -->
+    <rect x="0" y="75" width="22" height="32" rx="6" fill="url(#greenBar)"/>
+    <text x="35" y="96" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="700" fill="#34d399">GrainVDB + Cua Replay: $720 / year (99.76% Saved)</text>
+  </g>
+
+  <!-- Metric 2: Tokens per 300-step loop -->
+  <g transform="translate(50, 230)">
+    <text x="0" y="20" font-family="-apple-system, sans-serif" font-size="14" font-weight="700" fill="#e2e8f0">Context Token Consumption per Task Run</text>
+    
+    <!-- Status Quo -->
+    <rect x="0" y="35" width="700" height="32" rx="6" fill="url(#redBar)"/>
+    <text x="20" y="56" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="700" fill="#ffffff">135,000 Tokens ($2.03 per task run)</text>
+    
+    <!-- GrainVDB -->
+    <rect x="0" y="75" width="20" height="32" rx="6" fill="url(#greenBar)"/>
+    <text x="35" y="96" font-family="'JetBrains Mono', monospace" font-size="13" font-weight="700" fill="#34d399">320 Tokens ($0.0048 per task run)</text>
+  </g>
+
+  <!-- Side Badge: Net Annual Profit Generated -->
+  <g transform="translate(780, 130)">
+    <rect width="170" height="210" rx="10" fill="#0f172a" stroke="#34d399" stroke-width="1.5"/>
+    <text x="85" y="35" font-family="-apple-system, sans-serif" font-size="12" font-weight="700" fill="#9ca3af" text-anchor="middle">NET CASH SAVED</text>
+    <text x="85" y="80" font-family="'JetBrains Mono', monospace" font-size="24" font-weight="800" fill="#34d399" text-anchor="middle">+$303,780</text>
+    <text x="85" y="105" font-family="-apple-system, sans-serif" font-size="11" fill="#cbd5e1" text-anchor="middle">per year (25 nodes)</text>
+    
+    <line x1="20" y1="125" x2="150" y2="125" stroke="#1e293b" stroke-width="1"/>
+    
+    <text x="85" y="150" font-family="-apple-system, sans-serif" font-size="11" font-weight="600" fill="#38bdf8" text-anchor="middle">Retrieval Latency</text>
+    <text x="85" y="175" font-family="'JetBrains Mono', monospace" font-size="16" font-weight="800" fill="#ffffff" text-anchor="middle">0.36 ms</text>
+    <text x="85" y="195" font-family="-apple-system, sans-serif" font-size="10" fill="#64748b" text-anchor="middle">Metal GPU Core</text>
+  </g>
+</svg>
