@@ -1,10 +1,13 @@
 # GrainVDB: Apple Silicon-Native Embedded Vector Store
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Live Demo](https://img.shields.io/badge/Live%20Demo-GrainVDB%20Studio-38bdf8.svg)](https://21e8-miner.github.io/grain-vdb/)
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS%20%28Apple%20Silicon%29-brightgreen.svg)]()
 [![Metal: v3.0](https://img.shields.io/badge/Metal-v3.0-blue.svg)]()
 [![Swift: SPM](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)]()
 [![Python: 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)]()
+
+> 🌐 **Interactive Web Demo:** [https://21e8-miner.github.io/grain-vdb/](https://21e8-miner.github.io/grain-vdb/) — Test sub-millisecond retrieval, topic filtering, and hallucination audits in your browser.
 
 **GrainVDB** is an Apple Silicon-native embedded vector store for local-first AI and RAG applications. It delivers sub-millisecond local vector retrieval by leveraging Apple's Unified Memory Architecture (UMA), combining hand-tuned ARM NEON CPU vectorization with high-throughput 2D Metal GPU compute shaders.
 
