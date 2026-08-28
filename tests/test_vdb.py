@@ -214,5 +214,47 @@ class TestGrainVDB(unittest.TestCase):
         self.assertIn("topic", results[0].metadata)
 
 
+    def test_edge_cases_empty_and_single_vector(self):
+        """Test search on empty database and single vector database."""
+        vdb = GrainVDB(dim=self.dim, mode=SearchMode.EXACT)
+        # Empty DB search should fail gracefully
+        with self.assertRaises(RuntimeError):
+            vdb.search(self.vectors[0], k=3)
+
+        # Ingest single vector
+        vdb.add_vectors(self.vectors[:1])
+        self.assertEqual(vdb.vector_count, 1)
+        res = vdb.search(self.vectors[0], k=1)
+        self.assertEqual(len(res.indices), 1)
+        self.assertEqual(res.indices[0], 0)
+
+    def test_edge_cases_dimension_mismatch(self):
+        """Test ValueError on dimension mismatch."""
+        vdb = GrainVDB(dim=self.dim, mode=SearchMode.EXACT)
+        wrong_dim_vec = np.random.randn(self.dim + 4).astype(np.float32)
+        with self.assertRaises(ValueError):
+            vdb.add_vectors(np.array([wrong_dim_vec]))
+        with self.assertRaises(ValueError):
+            vdb.search(wrong_dim_vec, k=1)
+
+    def test_edge_cases_zero_vector(self):
+        """Test zero-magnitude vector handling without NaN/Inf."""
+        vdb = GrainVDB(dim=self.dim, mode=SearchMode.EXACT)
+        zero_vec = np.zeros(self.dim, dtype=np.float32)
+        vdb.add_vectors(np.array([zero_vec]))
+        res = vdb.search(zero_vec, k=1)
+        self.assertEqual(len(res.indices), 1)
+        self.assertFalse(np.isnan(res.scores[0]))
+
+    def test_hnsw_parameter_tuning(self):
+        """Test HNSW runtime ef_search adjustment."""
+        vdb = GrainVDB(dim=self.dim, mode=SearchMode.HNSW)
+        vdb.add_vectors(self.vectors)
+        vdb.build_index()
+        self.assertTrue(vdb.set_ef_search(128))
+        res = vdb.search(self.vectors[0], k=5)
+        self.assertGreaterEqual(len(res.indices), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

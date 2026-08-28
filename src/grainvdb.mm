@@ -227,8 +227,8 @@ gv2_context_t *gv2_ctx_create(const gv2_config_t *config) {
 
   // Load Metal library
   NSError *error = nil;
-  NSString *lib_path = [NSString stringWithUTF8String:config->metallib_path];
-  ctx->library = [ctx->device newLibraryWithFile:lib_path error:&error];
+  NSURL *lib_url = [NSURL fileURLWithPath:[NSString stringWithUTF8String:config->metallib_path]];
+  ctx->library = [ctx->device newLibraryWithURL:lib_url error:&error];
 
   if (!ctx->library) {
     set_error(ctx, [[error localizedDescription] UTF8String]);
