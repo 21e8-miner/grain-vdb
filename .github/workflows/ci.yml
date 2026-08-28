@@ -1,0 +1,42 @@
+name: GrainVDB CI (Apple Silicon)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: macos-14 # Apple Silicon M-series runner
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Compile Native Metal Core & Objective-C++ Driver
+      run: |
+        chmod +x build.sh
+        ./build.sh
+
+    - name: Install Python Package Dependencies
+      run: |
+        pip install --upgrade pip setuptools wheel numpy
+        pip install -e .
+
+    - name: Run Python Unit Test Suite
+      run: |
+        python3 -m unittest discover -s tests -p "test_*.py"
+
+    - name: Run Swift Package Manager Test Suite
+      run: |
+        swift test
+
+    - name: Run Swift Native Executable Demo
+      run: |
+        swift run CuaMemoryDemo

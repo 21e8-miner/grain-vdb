@@ -6,6 +6,7 @@ Provides drop-in adapters for LangChain, LlamaIndex, and MLX.
 from .langchain import GrainVDBVectorStore, CuaReplayTool, CuaAuditTool
 from .cua import CuaGrainMemory
 from .cua_hands import Level, Outcome, ProbeVerdict, ProbeBudget, classify, ladder_level, ProbingMind, TrustLedger
+from .cua_skills import SkillPlaybook, SkillStep, PlaybookProber, PlaybookStatus
 
 __all__ = [
     "GrainVDBVectorStore", 
@@ -20,4 +21,8 @@ __all__ = [
     "ladder_level",
     "ProbingMind",
     "TrustLedger",
+    "SkillPlaybook",
+    "SkillStep",
+    "PlaybookProber",
+    "PlaybookStatus",
 ]

@@ -1,0 +1,36 @@
+name: Release & Package Distribution
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-and-release:
+    runs-on: macos-14
+
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python 3.11
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.11"
+
+    - name: Build Native Metal Core
+      run: |
+        chmod +x build.sh
+        ./build.sh
+
+    - name: Build Distribution Wheels & Source Tarball
+      run: |
+        python3 scripts/build_dist.py
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: dist/*
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
