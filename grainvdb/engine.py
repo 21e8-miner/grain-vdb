@@ -37,6 +37,13 @@ class DistanceMetric(IntEnum):
     MANHATTAN = 3   # Manhattan distance (L1)
 
 
+class EngineType(IntEnum):
+    """Execution engine backend."""
+    AUTO = 0          # Adaptive: Accelerate CPU for single/small queries, Metal GPU for large batches
+    ACCELERATE = 1    # Apple Accelerate CPU (vDSP / AMX / NEON)
+    METAL = 2         # Metal GPU compute shaders
+
+
 @dataclass
 class HNSWConfig:
     """HNSW index configuration."""
@@ -44,6 +51,16 @@ class HNSWConfig:
     ef_construction: int = 200  # Construction candidate pool size
     ef_search: int = 50         # Search candidate pool size
     max_elements: int = 0       # Max elements (0 = unlimited)
+
+
+@dataclass
+class HNSWStats:
+    """HNSW Index Statistics."""
+    num_nodes: int
+    num_edges: int
+    max_level: int
+    avg_degree: float
+    memory_usage_bytes: int
 
 
 @dataclass
@@ -81,11 +98,15 @@ class Metrics:
     p99_latency_ms: float
     throughput_qps: float
     total_queries: int
+    gpu_utilization: float = 0.0
+    memory_usage_mb: float = 0.0
     
     def __repr__(self) -> str:
         return (f"Metrics(avg={self.avg_latency_ms:.2f}ms, "
                 f"p95={self.p95_latency_ms:.2f}ms, "
-                f"throughput={self.throughput_qps:.1f} QPS)")
+                f"throughput={self.throughput_qps:.1f} QPS, "
+                f"gpu={self.gpu_utilization:.1f}%, "
+                f"mem={self.memory_usage_mb:.1f}MB)")
 
 
 class GrainVDB:
@@ -132,6 +153,7 @@ class GrainVDB:
         mode: SearchMode = SearchMode.EXACT,
         quant: Quantization = Quantization.FP16,
         distance: DistanceMetric = DistanceMetric.COSINE,
+        engine: EngineType = EngineType.AUTO,
         hnsw_config: Optional[HNSWConfig] = None,
         use_gpu_topk: bool = True,
         use_batch_processing: bool = True,
@@ -144,6 +166,7 @@ class GrainVDB:
         self.mode = mode
         self.quant = quant
         self.distance = distance
+        self._engine = engine
         self.hnsw_config = hnsw_config or HNSWConfig()
         self.use_gpu_topk = use_gpu_topk
         self.use_batch_processing = use_batch_processing
@@ -233,6 +256,73 @@ class GrainVDB:
         
         self._lib.gv2_load.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
         self._lib.gv2_load.restype = ctypes.c_bool
+
+        self._lib.gv2_mmap.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+        self._lib.gv2_mmap.restype = ctypes.c_bool
+
+        self._lib.gv2_estimate_size.argtypes = [ctypes.c_void_p]
+        self._lib.gv2_estimate_size.restype = ctypes.c_size_t
+        
+        self._lib.gv2_get_vector.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.POINTER(ctypes.c_float),
+        ]
+        self._lib.gv2_get_vector.restype = ctypes.c_bool
+
+        self._lib.gv2_update_vector.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint64,
+            ctypes.POINTER(ctypes.c_float),
+        ]
+        self._lib.gv2_update_vector.restype = ctypes.c_bool
+
+        self._lib.gv2_remove_vectors.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_uint64),
+            ctypes.c_uint32,
+        ]
+        self._lib.gv2_remove_vectors.restype = ctypes.c_bool
+
+        self._lib.gv2_search_filtered.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(ctypes.c_float),
+            ctypes.c_uint32,
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+        ]
+        self._lib.gv2_search_filtered.restype = ctypes.c_void_p
+
+        class C_HNSWStats(ctypes.Structure):
+            _fields_ = [
+                ("num_nodes", ctypes.c_uint32),
+                ("num_edges", ctypes.c_uint32),
+                ("max_level", ctypes.c_uint32),
+                ("avg_degree", ctypes.c_float),
+                ("memory_usage_bytes", ctypes.c_size_t),
+            ]
+        self._C_HNSWStats = C_HNSWStats
+
+        self._lib.gv2_hnsw_get_stats.argtypes = [
+            ctypes.c_void_p,
+            ctypes.POINTER(C_HNSWStats),
+        ]
+        self._lib.gv2_hnsw_get_stats.restype = ctypes.c_bool
+
+        self._lib.gv2_set_ef_search.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        self._lib.gv2_set_ef_search.restype = ctypes.c_bool
+
+        self._lib.gv2_set_batch_size.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        self._lib.gv2_set_batch_size.restype = ctypes.c_bool
+
+        self._lib.gv2_quantize.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self._lib.gv2_quantize.restype = ctypes.c_bool
+
+        self._lib.gv2_recommend_quantization.argtypes = [ctypes.c_uint32, ctypes.c_uint32]
+        self._lib.gv2_recommend_quantization.restype = ctypes.c_int
+
+        self._lib.gv2_estimate_recall.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+        self._lib.gv2_estimate_recall.restype = ctypes.c_float
         
         self._lib.gv2_get_metrics.argtypes = [
             ctypes.c_void_p,
@@ -248,7 +338,14 @@ class GrainVDB:
         
         self._lib.gv2_clear.argtypes = [ctypes.c_void_p]
         
+        self._lib.gv2_set_engine.argtypes = [ctypes.c_void_p, ctypes.c_int]
+        self._lib.gv2_set_engine.restype = ctypes.c_bool
+
+        self._lib.gv2_get_engine.argtypes = [ctypes.c_void_p]
+        self._lib.gv2_get_engine.restype = ctypes.c_int
+
         self._lib.gv2_get_error.restype = ctypes.c_char_p
+        self._lib.gv2_get_error.argtypes = [ctypes.c_void_p]
         
         # Create config structure
         class GV2Config(ctypes.Structure):
@@ -257,6 +354,7 @@ class GrainVDB:
                 ("quant", ctypes.c_int),
                 ("distance", ctypes.c_int),
                 ("mode", ctypes.c_int),
+                ("engine", ctypes.c_int),
                 ("hnsw_M", ctypes.c_uint32),
                 ("hnsw_ef_construction", ctypes.c_uint32),
                 ("hnsw_ef_search", ctypes.c_uint32),
@@ -281,6 +379,7 @@ class GrainVDB:
             quant=int(self.quant),
             distance=int(self.distance),
             mode=int(self.mode),
+            engine=int(self._engine),
             hnsw_M=self.hnsw_config.M,
             hnsw_ef_construction=self.hnsw_config.ef_construction,
             hnsw_ef_search=self.hnsw_config.ef_search,
@@ -293,14 +392,14 @@ class GrainVDB:
         
         self._ctx = self._lib.gv2_ctx_create(ctypes.byref(config))
         if not self._ctx:
-            error = self._lib.gv2_get_error()
+            error = self._lib.gv2_get_error(None)
             raise RuntimeError(
                 f"Native initialization failed: {error.decode() if error else 'Unknown error'}"
             )
     
     def _check_error(self) -> None:
         """Check and raise any native errors."""
-        error = self._lib.gv2_get_error()
+        error = self._lib.gv2_get_error(self._ctx)
         if error:
             raise RuntimeError(f"GrainVDB error: {error.decode()}")
     
@@ -368,11 +467,111 @@ class GrainVDB:
             self._vector_count += count
             return self
     
+    def get_vector(self, vector_id: int) -> np.ndarray:
+        """Get stored vector by ID as a float32 numpy array."""
+        with self._lock:
+            out = np.zeros(self.dim, dtype=np.float32)
+            success = self._lib.gv2_get_vector(
+                self._ctx,
+                ctypes.c_uint64(vector_id),
+                out.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            )
+            if not success:
+                self._lib.gv2_clear_error(self._ctx)
+                raise KeyError(f"Vector ID {vector_id} not found")
+            return out
+
+    def update_vector(
+        self,
+        vector_id: int,
+        vector: np.ndarray,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> "GrainVDB":
+        """Update an existing vector and optional metadata."""
+        with self._lock:
+            vec = np.asarray(vector, dtype=np.float32).reshape(-1)
+            if vec.shape[0] != self.dim:
+                raise ValueError(
+                    f"Dimension mismatch: expected {self.dim}, got {vec.shape[0]}"
+                )
+            if self.distance == DistanceMetric.COSINE:
+                norm = np.linalg.norm(vec)
+                if norm > 1e-7:
+                    vec = vec / norm
+            success = self._lib.gv2_update_vector(
+                self._ctx,
+                ctypes.c_uint64(vector_id),
+                vec.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+            )
+            if not success:
+                self._lib.gv2_clear_error(self._ctx)
+                raise KeyError(f"Vector ID {vector_id} not found")
+            if metadata is not None:
+                self._metadata[int(vector_id)] = metadata
+            return self
+
+    def remove_vectors(
+        self,
+        ids: Union[int, List[int], np.ndarray],
+    ) -> "GrainVDB":
+        """Remove one or more vectors by ID."""
+        with self._lock:
+            if isinstance(ids, (int, np.integer)):
+                ids_arr = np.array([ids], dtype=np.uint64)
+            else:
+                ids_arr = np.asarray(ids, dtype=np.uint64)
+
+            count = len(ids_arr)
+            if count == 0:
+                return self
+
+            success = self._lib.gv2_remove_vectors(
+                self._ctx,
+                ids_arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
+                count,
+            )
+            if not success:
+                self._check_error()
+                raise RuntimeError("Failed to remove vectors")
+
+            for vid in ids_arr:
+                self._metadata.pop(int(vid), None)
+            self._vector_count = self.vector_count
+            return self
+
+    @property
+    def engine(self) -> EngineType:
+        """Get active execution engine."""
+        with self._lock:
+            return EngineType(self._lib.gv2_get_engine(self._ctx))
+
+    @engine.setter
+    def engine(self, value: EngineType) -> None:
+        """Set active execution engine."""
+        with self._lock:
+            self._lib.gv2_set_engine(self._ctx, int(value))
+            self._engine = value
+
     @property
     def vector_count(self) -> int:
         """Get the number of stored vectors."""
         with self._lock:
             return self._lib.gv2_vector_count(self._ctx)
+
+    @property
+    def hnsw_stats(self) -> Optional[HNSWStats]:
+        """Get HNSW index statistics."""
+        with self._lock:
+            stats = self._C_HNSWStats()
+            if self._lib.gv2_hnsw_get_stats(self._ctx, ctypes.byref(stats)):
+                return HNSWStats(
+                    num_nodes=stats.num_nodes,
+                    num_edges=stats.num_edges,
+                    max_level=stats.max_level,
+                    avg_degree=stats.avg_degree,
+                    memory_usage_bytes=stats.memory_usage_bytes,
+                )
+            return None
     
     def build_index(self) -> "GrainVDB":
         """
@@ -396,13 +595,15 @@ class GrainVDB:
         self,
         query: np.ndarray,
         k: int = 10,
+        filter: Optional[Callable[[int, Optional[Dict[str, Any]]], bool]] = None,
     ) -> SearchResult:
         """
-        Search for k nearest neighbors.
+        Search for k nearest neighbors with optional metadata filter.
         
         Args:
             query: Query vector of shape (dim,) or (1, dim)
             k: Number of results to return
+            filter: Optional predicate Callable(id, metadata) -> bool or Callable(metadata) -> bool
         
         Returns:
             SearchResult with indices, scores, and latency
@@ -421,11 +622,34 @@ class GrainVDB:
                 if norm > 1e-7:
                     query = query / norm
             
-            result_ptr = self._lib.gv2_search(
-                self._ctx,
-                query.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
-                k,
-            )
+            if filter is not None:
+                FILTER_FUNC = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_uint64, ctypes.c_void_p)
+                def _c_filter(vid, userdata):
+                    try:
+                        meta = self._metadata.get(int(vid))
+                        return bool(filter(int(vid), meta))
+                    except TypeError:
+                        try:
+                            return bool(filter(self._metadata.get(int(vid))))
+                        except Exception:
+                            return bool(filter(int(vid)))
+                    except Exception:
+                        return False
+                
+                c_cb = FILTER_FUNC(_c_filter)
+                result_ptr = self._lib.gv2_search_filtered(
+                    self._ctx,
+                    query.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                    k,
+                    c_cb,
+                    None,
+                )
+            else:
+                result_ptr = self._lib.gv2_search(
+                    self._ctx,
+                    query.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),
+                    k,
+                )
             
             if not result_ptr:
                 self._check_error()
@@ -619,6 +843,49 @@ class GrainVDB:
             if success:
                 self._vector_count = self.vector_count
             return success
+
+    def mmap(self, path: Union[str, Path]) -> bool:
+        """
+        Memory-map index from disk for zero-copy instant loading.
+        
+        Args:
+            path: File path to map from
+        
+        Returns:
+            True if successful
+        """
+        with self._lock:
+            success = self._lib.gv2_mmap(self._ctx, str(path).encode('utf-8'))
+            if success:
+                self._vector_count = self.vector_count
+            return success
+
+    def estimate_size(self) -> int:
+        """Estimate file size in bytes for the stored vectors."""
+        with self._lock:
+            return self._lib.gv2_estimate_size(self._ctx)
+
+    def set_ef_search(self, ef: int) -> "GrainVDB":
+        """
+        Set HNSW ef_search parameter dynamically at runtime.
+        
+        Args:
+            ef: Search candidate pool size (higher = higher recall, slightly higher latency)
+        """
+        with self._lock:
+            self._lib.gv2_set_ef_search(self._ctx, ef)
+            return self
+
+    def set_batch_size(self, size: int) -> "GrainVDB":
+        """Set default batch size."""
+        with self._lock:
+            self._lib.gv2_set_batch_size(self._ctx, size)
+            return self
+
+    def estimate_recall(self, k: int = 10) -> float:
+        """Estimate search recall for the current index configuration."""
+        with self._lock:
+            return float(self._lib.gv2_estimate_recall(self._ctx, k))
     
     def get_metrics(self) -> Metrics:
         """Get performance metrics."""
@@ -631,6 +898,8 @@ class GrainVDB:
                     ("p99_latency_ms", ctypes.c_float),
                     ("throughput_qps", ctypes.c_float),
                     ("total_queries", ctypes.c_uint64),
+                    ("gpu_utilization", ctypes.c_float),
+                    ("memory_usage_mb", ctypes.c_float),
                 ]
             
             metrics = MetricsStruct()
@@ -647,6 +916,8 @@ class GrainVDB:
                 p99_latency_ms=metrics.p99_latency_ms,
                 throughput_qps=metrics.throughput_qps,
                 total_queries=metrics.total_queries,
+                gpu_utilization=metrics.gpu_utilization,
+                memory_usage_mb=metrics.memory_usage_mb,
             )
     
     def reset_metrics(self) -> "GrainVDB":

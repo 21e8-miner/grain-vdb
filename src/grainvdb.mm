@@ -12,13 +12,18 @@
 
 #include "gv_core.h"
 #import <Metal/Metal.h>
+#include <Accelerate/Accelerate.h>
 #include <algorithm>
+#include <arm_neon.h>
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <dispatch/dispatch.h>
+#include <fcntl.h>
 #include <fstream>
 #include <iostream>
 #include <mutex>
+#include <numeric>
 #include <queue>
 #include <random>
 #include <shared_mutex>
@@ -26,6 +31,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 // ============================================================================
@@ -142,26 +148,29 @@ static inline gv_half_t f32_to_f16(float f) {
 }
 
 static inline float f16_to_f32(gv_half_t h) {
-  uint32_t s = (h & 0x8000) << 16;
-  uint32_t e = (h & 0x7c00) >> 10;
-  uint32_t m = (h & 0x03ff) << 13;
-
-  if (e == 0x1f) {
-    e = 0xff;
-  } else if (e == 0) {
-    if (m != 0) {
-      while (!(m & 0x00800000)) {
-        m <<= 1;
-        e--;
-      }
-      e++;
+  int s = (h >> 15) & 0x1;
+  int e = (h >> 10) & 0x1f;
+  int m = h & 0x3ff;
+  
+  if (e == 0) {
+    if (m == 0) {
+      return s ? -0.0f : 0.0f;
+    } else {
+      // Subnormal number: (-1)^s * 2^-14 * (m / 1024)
+      float val = scalbnf((float)m, -24);
+      return s ? -val : val;
+    }
+  } else if (e == 31) {
+    if (m == 0) {
+      return s ? -INFINITY : INFINITY;
+    } else {
+      return NAN;
     }
   } else {
-    e = e + (127 - 15);
+    // Normal number: (-1)^s * 2^(e - 15) * (1 + m / 1024)
+    float val = scalbnf(1.0f + (float)m / 1024.0f, e - 15);
+    return s ? -val : val;
   }
-
-  uint32_t res = s | (e << 23) | m;
-  return *((float *)&res);
 }
 
 // ============================================================================
@@ -378,6 +387,111 @@ void gv2_clear(gv2_context_t *ctx) {
   ctx->hnsw_built = false;
 }
 
+bool gv2_get_vector(gv2_context_t *ctx, uint64_t id, float *output) {
+  if (!ctx || !output)
+    return false;
+
+  std::shared_lock<std::shared_mutex> lock(ctx->vector_mutex);
+  auto it = ctx->id_to_index.find(id);
+  if (it == ctx->id_to_index.end()) {
+    set_error(ctx, "Vector ID not found");
+    return false;
+  }
+
+  uint32_t idx = it->second;
+  uint32_t dim = ctx->config.dimension;
+  gv_half_t *buffer = (gv_half_t *)[ctx->vector_buffer contents];
+  for (uint32_t j = 0; j < dim; j++) {
+    output[j] = f16_to_f32(buffer[idx * dim + j]);
+  }
+  return true;
+}
+
+bool gv2_update_vector(gv2_context_t *ctx, uint64_t id, const float *vector) {
+  if (!ctx || !vector)
+    return false;
+
+  std::unique_lock<std::shared_mutex> lock(ctx->vector_mutex);
+  auto it = ctx->id_to_index.find(id);
+  if (it == ctx->id_to_index.end()) {
+    set_error(ctx, "Vector ID not found");
+    return false;
+  }
+
+  uint32_t idx = it->second;
+  uint32_t dim = ctx->config.dimension;
+  gv_half_t *buffer = (gv_half_t *)[ctx->vector_buffer contents];
+  for (uint32_t j = 0; j < dim; j++) {
+    buffer[idx * dim + j] = f32_to_f16(vector[j]);
+  }
+  ctx->hnsw_built = false;
+  return true;
+}
+
+bool gv2_remove_vectors(gv2_context_t *ctx, const uint64_t *ids, uint32_t count) {
+  if (!ctx || !ids || count == 0)
+    return false;
+
+  std::unique_lock<std::shared_mutex> lock(ctx->vector_mutex);
+  if (ctx->vector_count == 0)
+    return true;
+
+  std::unordered_set<uint64_t> to_remove(ids, ids + count);
+  std::vector<uint64_t> new_ids;
+  std::vector<uint32_t> keep_indices;
+  new_ids.reserve(ctx->vector_count);
+  keep_indices.reserve(ctx->vector_count);
+
+  for (uint32_t i = 0; i < ctx->vector_count; i++) {
+    uint64_t vid = ctx->vector_ids[i];
+    if (to_remove.find(vid) == to_remove.end()) {
+      new_ids.push_back(vid);
+      keep_indices.push_back(i);
+    }
+  }
+
+  if (new_ids.size() == ctx->vector_count) {
+    return true; // No matching vectors to remove
+  }
+
+  uint32_t new_count = (uint32_t)new_ids.size();
+  uint32_t dim = ctx->config.dimension;
+
+  if (new_count > 0) {
+    size_t bytes = new_count * dim * sizeof(gv_half_t);
+    id<MTLBuffer> new_buffer = [ctx->device newBufferWithLength:bytes
+                                                        options:MTLResourceStorageModeShared];
+    if (!new_buffer) {
+      set_error(ctx, "Failed to allocate buffer during vector removal");
+      return false;
+    }
+
+    gv_half_t *old_data = (gv_half_t *)[ctx->vector_buffer contents];
+    gv_half_t *new_data = (gv_half_t *)[new_buffer contents];
+
+    for (uint32_t i = 0; i < new_count; i++) {
+      uint32_t old_idx = keep_indices[i];
+      memcpy(&new_data[i * dim], &old_data[old_idx * dim], dim * sizeof(gv_half_t));
+    }
+
+    ctx->vector_buffer = new_buffer;
+    ctx->buffer_capacity = new_count;
+  } else {
+    ctx->vector_buffer = nil;
+    ctx->buffer_capacity = 0;
+  }
+
+  ctx->vector_ids = std::move(new_ids);
+  ctx->id_to_index.clear();
+  for (uint32_t i = 0; i < new_count; i++) {
+    ctx->id_to_index[ctx->vector_ids[i]] = i;
+  }
+  ctx->vector_count = new_count;
+  ctx->hnsw_built = false;
+
+  return true;
+}
+
 // ============================================================================
 // GPU-Accelerated Search
 // ============================================================================
@@ -519,7 +633,7 @@ static gv2_search_result_t **batch_search_exact(gv2_context_t *ctx,
 
       float *scores = &all_scores[q * n];
 
-      if (false && ctx->config.use_gpu_topk && k <= 1024) {
+      if (ctx->config.use_gpu_topk && k <= 1024 && n >= 128) {
         // Use GPU-accelerated Top-K
         gpu_bitonic_topk(ctx, scores, n, k, results[q]->indices,
                          results[q]->scores);
@@ -549,6 +663,187 @@ static gv2_search_result_t **batch_search_exact(gv2_context_t *ctx,
   }
 }
 
+// Helper functions for HNSW approximate search
+static float compute_distance(const std::vector<float> &a,
+                              const std::vector<float> &b) {
+  float dot = 0, norm_a = 0, norm_b = 0;
+  for (size_t i = 0; i < a.size(); i++) {
+    dot += a[i] * b[i];
+    norm_a += a[i] * a[i];
+    norm_b += b[i] * b[i];
+  }
+  return dot / (sqrt(norm_a) * sqrt(norm_b) + 1e-7);
+}
+
+static gv2_search_result_t *search_hnsw(gv2_context_t *ctx, const float *query,
+                                        uint32_t k) {
+  HNSWGraph *graph = ctx->hnsw_graph;
+  uint32_t n = graph->nodes.size();
+  uint32_t dim = ctx->config.dimension;
+  std::vector<float> q_vec(query, query + dim);
+
+  // Greedy search from entry point down to level 1
+  uint32_t curr = graph->entry_point;
+  float curr_dist = compute_distance(q_vec, graph->nodes[curr].vector);
+
+  bool changed = true;
+  while (changed) {
+    changed = false;
+    for (uint32_t neighbor : graph->nodes[curr].neighbors) {
+      if (neighbor >= n)
+        continue;
+      float dist = compute_distance(q_vec, graph->nodes[neighbor].vector);
+      if (dist > curr_dist) { // higher cosine similarity is closer
+        curr = neighbor;
+        curr_dist = dist;
+        changed = true;
+      }
+    }
+  }
+
+  // Now search at level 0 with ef_search
+  uint32_t ef = std::max(ctx->config.hnsw.ef_search, k);
+
+  // priority queue of candidates (max-heap: highest similarity is at the top)
+  typedef std::pair<float, uint32_t> DistNode;
+  std::priority_queue<DistNode> candidates;
+  // priority queue of nearest neighbors found (min-heap: lowest similarity is at the top)
+  std::priority_queue<DistNode, std::vector<DistNode>, std::greater<DistNode>> w;
+
+  std::vector<bool> visited(n, false);
+
+  visited[curr] = true;
+  candidates.push({curr_dist, curr});
+  w.push({curr_dist, curr});
+
+  while (!candidates.empty()) {
+    auto c = candidates.top();
+    candidates.pop();
+
+    if (w.size() >= ef && c.first < w.top().first) {
+      break;
+    }
+
+    for (uint32_t neighbor : graph->nodes[c.second].neighbors) {
+      if (neighbor >= n || visited[neighbor])
+        continue;
+      visited[neighbor] = true;
+
+      float dist = compute_distance(q_vec, graph->nodes[neighbor].vector);
+      if (w.size() < ef || dist > w.top().first) {
+        candidates.push({dist, neighbor});
+        w.push({dist, neighbor});
+        if (w.size() > ef) {
+          w.pop();
+        }
+      }
+    }
+  }
+
+  // Extract top k from w
+  std::vector<DistNode> sorted;
+  while (!w.empty()) {
+    sorted.push_back(w.top());
+    w.pop();
+  }
+  std::sort(sorted.begin(), sorted.end(), [](const DistNode &a, const DistNode &b) {
+    return a.first > b.first; // sort descending by similarity (highest similarity first)
+  });
+
+  auto *result = new gv2_search_result_t();
+  uint32_t actual_k = std::min((size_t)k, sorted.size());
+  result->indices = new uint64_t[actual_k];
+  result->scores = new float[actual_k];
+  result->num_results = actual_k;
+
+  for (uint32_t i = 0; i < actual_k; i++) {
+    result->indices[i] = ctx->vector_ids[sorted[i].second];
+    result->scores[i] = sorted[i].first;
+  }
+
+  return result;
+}
+
+static gv2_search_result_t **batch_search_hnsw(gv2_context_t *ctx,
+                                               const float *queries,
+                                               uint32_t num_queries,
+                                               uint32_t k) {
+  gv2_search_result_t **results = new gv2_search_result_t *[num_queries];
+  uint32_t dim = ctx->config.dimension;
+  for (uint32_t q = 0; q < num_queries; q++) {
+    auto start = std::chrono::high_resolution_clock::now();
+    results[q] = search_hnsw(ctx, &queries[q * dim], k);
+    auto end = std::chrono::high_resolution_clock::now();
+    results[q]->latency_ms =
+        std::chrono::duration<float, std::milli>(end - start).count();
+  }
+  return results;
+}
+
+// CPU Accelerate / AMX / NEON Vector Similarity Scan
+static void accelerate_similarity_scan(gv2_context_t *ctx, const float *query,
+                                      float *out_scores, uint32_t n) {
+  uint32_t dim = ctx->config.dimension;
+  const __fp16 *buffer = (const __fp16 *)[ctx->vector_buffer contents];
+
+  // Pre-convert query to __fp16 once
+  std::vector<__fp16> q16(dim);
+  for (uint32_t j = 0; j < dim; j++) {
+    q16[j] = (__fp16)query[j];
+  }
+  const __fp16 *q_ptr = q16.data();
+
+  if (n >= 4096) {
+    uint32_t chunk_size = 2048;
+    uint32_t num_chunks = (n + chunk_size - 1) / chunk_size;
+    dispatch_apply(num_chunks, dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_HIGH, 0), ^(size_t chunk_idx) {
+      size_t start = chunk_idx * chunk_size;
+      size_t end = std::min(start + (size_t)chunk_size, (size_t)n);
+      for (size_t i = start; i < end; i++) {
+        const __fp16 *vec = &buffer[i * dim];
+        float32x4_t acc0 = vdupq_n_f32(0.0f);
+        float32x4_t acc1 = vdupq_n_f32(0.0f);
+
+        for (uint32_t j = 0; j < dim; j += 8) {
+          float16x8_t q_vec = vld1q_f16(&q_ptr[j]);
+          float16x8_t v_vec = vld1q_f16(&vec[j]);
+
+          float32x4_t q_low = vcvt_f32_f16(vget_low_f16(q_vec));
+          float32x4_t v_low = vcvt_f32_f16(vget_low_f16(v_vec));
+          acc0 = vmlaq_f32(acc0, q_low, v_low);
+
+          float32x4_t q_high = vcvt_f32_f16(vget_high_f16(q_vec));
+          float32x4_t v_high = vcvt_f32_f16(vget_high_f16(v_vec));
+          acc1 = vmlaq_f32(acc1, q_high, v_high);
+        }
+
+        out_scores[i] = vaddvq_f32(vaddq_f32(acc0, acc1));
+      }
+    });
+  } else {
+    for (size_t i = 0; i < n; i++) {
+      const __fp16 *vec = &buffer[i * dim];
+      float32x4_t acc0 = vdupq_n_f32(0.0f);
+      float32x4_t acc1 = vdupq_n_f32(0.0f);
+
+      for (uint32_t j = 0; j < dim; j += 8) {
+        float16x8_t q_vec = vld1q_f16(&q_ptr[j]);
+        float16x8_t v_vec = vld1q_f16(&vec[j]);
+
+        float32x4_t q_low = vcvt_f32_f16(vget_low_f16(q_vec));
+        float32x4_t v_low = vcvt_f32_f16(vget_low_f16(v_vec));
+        acc0 = vmlaq_f32(acc0, q_low, v_low);
+
+        float32x4_t q_high = vcvt_f32_f16(vget_high_f16(q_vec));
+        float32x4_t v_high = vcvt_f32_f16(vget_high_f16(v_vec));
+        acc1 = vmlaq_f32(acc1, q_high, v_high);
+      }
+
+      out_scores[i] = vaddvq_f32(vaddq_f32(acc0, acc1));
+    }
+  }
+}
+
 // Single query search
 gv2_search_result_t *gv2_search(gv2_context_t *ctx, const float *query,
                                 uint32_t k) {
@@ -566,10 +861,47 @@ gv2_search_result_t *gv2_search(gv2_context_t *ctx, const float *query,
 
   auto start = std::chrono::high_resolution_clock::now();
 
-  // Use batch search with single query
-  gv2_search_result_t **batch_results = batch_search_exact(ctx, query, 1, k);
-  gv2_search_result_t *result = batch_results[0];
-  delete[] batch_results;
+  gv2_search_result_t *result = nullptr;
+  if ((ctx->config.mode == GV2_SEARCH_HNSW || ctx->config.mode == GV2_SEARCH_HYBRID) && ctx->hnsw_built) {
+    result = search_hnsw(ctx, query, k);
+  } else {
+    bool use_accelerate = (ctx->config.engine == GV2_ENGINE_ACCELERATE) ||
+                          (ctx->config.engine == GV2_ENGINE_AUTO && ctx->vector_count <= 25000);
+    if (use_accelerate) {
+      uint32_t n = ctx->vector_count;
+      std::vector<float> scores(n);
+      accelerate_similarity_scan(ctx, query, scores.data(), n);
+
+      typedef std::pair<float, uint64_t> ScIdx;
+      std::priority_queue<ScIdx, std::vector<ScIdx>, std::greater<ScIdx>> pq;
+
+      for (uint32_t i = 0; i < n; i++) {
+        if (pq.size() < k) {
+          pq.push({scores[i], ctx->vector_ids[i]});
+        } else if (scores[i] > pq.top().first) {
+          pq.pop();
+          pq.push({scores[i], ctx->vector_ids[i]});
+        }
+      }
+
+      uint32_t actual_k = (uint32_t)pq.size();
+      result = new gv2_search_result_t();
+      result->indices = new uint64_t[actual_k];
+      result->scores = new float[actual_k];
+      result->num_results = actual_k;
+
+      for (int i = (int)actual_k - 1; i >= 0; i--) {
+        result->scores[i] = pq.top().first;
+        result->indices[i] = pq.top().second;
+        pq.pop();
+      }
+    } else {
+      // Use Metal GPU batch search with single query
+      gv2_search_result_t **batch_results = batch_search_exact(ctx, query, 1, k);
+      result = batch_results[0];
+      delete[] batch_results;
+    }
+  }
 
   auto end = std::chrono::high_resolution_clock::now();
   result->latency_ms =
@@ -600,7 +932,118 @@ gv2_search_result_t **gv2_search_batch(gv2_context_t *ctx, const float *queries,
     return nullptr;
   }
 
+  if ((ctx->config.mode == GV2_SEARCH_HNSW || ctx->config.mode == GV2_SEARCH_HYBRID) && ctx->hnsw_built) {
+    return batch_search_hnsw(ctx, queries, num_queries, k);
+  }
+
   return batch_search_exact(ctx, queries, num_queries, k);
+}
+
+// Search with filter predicate
+gv2_search_result_t *gv2_search_filtered(gv2_context_t *ctx,
+                                         const float *query,
+                                         uint32_t k,
+                                         gv2_filter_fn filter,
+                                         void *userdata) {
+  if (!ctx || !query || k == 0) {
+    set_error(ctx, "Invalid search parameters");
+    return nullptr;
+  }
+
+  if (!filter) {
+    return gv2_search(ctx, query, k);
+  }
+
+  std::shared_lock<std::shared_mutex> lock(ctx->vector_mutex);
+
+  uint32_t n = ctx->vector_count;
+  if (n == 0) {
+    set_error(ctx, "No vectors in database");
+    return nullptr;
+  }
+
+  auto start = std::chrono::high_resolution_clock::now();
+
+  std::vector<float> scores(n);
+  bool use_accelerate = (ctx->config.engine == GV2_ENGINE_ACCELERATE) ||
+                        (ctx->config.engine == GV2_ENGINE_AUTO && n <= 25000);
+
+  if (use_accelerate) {
+    accelerate_similarity_scan(ctx, query, scores.data(), n);
+  } else {
+    uint32_t dim = ctx->config.dimension;
+    size_t query_bytes = dim * sizeof(gv_half_t);
+    id<MTLBuffer> query_buffer =
+        [ctx->device newBufferWithLength:query_bytes
+                                 options:MTLResourceStorageModeShared];
+    gv_half_t *query_data = (gv_half_t *)[query_buffer contents];
+    for (uint32_t i = 0; i < dim; i++) {
+      query_data[i] = f32_to_f16(query[i]);
+    }
+
+    size_t score_bytes = n * sizeof(float);
+    id<MTLBuffer> score_buffer =
+        [ctx->device newBufferWithLength:score_bytes
+                                 options:MTLResourceStorageModeShared];
+
+    id<MTLCommandBuffer> cmd_buffer = [ctx->command_queue commandBuffer];
+    id<MTLComputeCommandEncoder> encoder = [cmd_buffer computeCommandEncoder];
+    [encoder setComputePipelineState:ctx->scan_pipeline];
+    [encoder setBuffer:query_buffer offset:0 atIndex:0];
+    [encoder setBuffer:ctx->vector_buffer offset:0 atIndex:1];
+    [encoder setBuffer:score_buffer offset:0 atIndex:2];
+    [encoder setBytes:&dim length:sizeof(uint32_t) atIndex:3];
+
+    MTLSize grid = MTLSizeMake(n, 1, 1);
+    MTLSize threads = MTLSizeMake(std::min(n, (uint32_t)256), 1, 1);
+    [encoder dispatchThreads:grid threadsPerThreadgroup:threads];
+    [encoder endEncoding];
+
+    [cmd_buffer commit];
+    [cmd_buffer waitUntilCompleted];
+
+    memcpy(scores.data(), [score_buffer contents], n * sizeof(float));
+  }
+
+  // Min-heap for top-k: pair<similarity_score, vector_id>
+  typedef std::pair<float, uint64_t> ScIdx;
+  std::priority_queue<ScIdx, std::vector<ScIdx>, std::greater<ScIdx>> pq;
+
+  for (uint32_t i = 0; i < n; i++) {
+    uint64_t vid = ctx->vector_ids[i];
+    if (filter(vid, userdata)) {
+      if (pq.size() < k) {
+        pq.push({scores[i], vid});
+      } else if (scores[i] > pq.top().first) {
+        pq.pop();
+        pq.push({scores[i], vid});
+      }
+    }
+  }
+
+  uint32_t result_count = (uint32_t)pq.size();
+  auto *result = new gv2_search_result_t();
+  result->indices = new uint64_t[result_count];
+  result->scores = new float[result_count];
+  result->num_results = result_count;
+
+  for (int i = (int)result_count - 1; i >= 0; i--) {
+    result->scores[i] = pq.top().first;
+    result->indices[i] = pq.top().second;
+    pq.pop();
+  }
+
+  auto end = std::chrono::high_resolution_clock::now();
+  result->latency_ms =
+      std::chrono::duration<float, std::milli>(end - start).count();
+
+  ctx->metrics.total_queries++;
+  {
+    std::lock_guard<std::mutex> lk(ctx->metrics.latency_mutex);
+    ctx->metrics.latencies.push_back(result->latency_ms);
+  }
+
+  return result;
 }
 
 void gv2_free_result(gv2_search_result_t *result) {
@@ -624,17 +1067,6 @@ void gv2_free_batch_results(gv2_search_result_t **results, uint32_t count) {
 // HNSW Approximate Search (BREAKTHROUGH #3)
 // ============================================================================
 
-static float compute_distance(const std::vector<float> &a,
-                              const std::vector<float> &b) {
-  float dot = 0, norm_a = 0, norm_b = 0;
-  for (size_t i = 0; i < a.size(); i++) {
-    dot += a[i] * b[i];
-    norm_a += a[i] * a[i];
-    norm_b += b[i] * b[i];
-  }
-  return dot / (sqrt(norm_a) * sqrt(norm_b) + 1e-7);
-}
-
 static uint32_t get_random_level(HNSWGraph *graph, float ml) {
   static thread_local std::mt19937 rng(std::random_device{}());
   std::uniform_real_distribution<float> dist(0.0f, 1.0f);
@@ -653,12 +1085,12 @@ bool gv2_hnsw_build(gv2_context_t *ctx) {
   uint32_t n = ctx->vector_count;
   uint32_t dim = ctx->config.dimension;
   uint32_t M = ctx->config.hnsw.M;
-  uint32_t ef_construction = ctx->config.hnsw.ef_construction;
 
   HNSWGraph *graph = ctx->hnsw_graph;
   graph->nodes.clear();
   graph->id_to_idx.clear();
   graph->max_level = 0;
+  graph->entry_point = 0;
   graph->ml = 1.0f / log((float)M);
 
   // Convert vectors from FP16 to FP32
@@ -682,61 +1114,120 @@ bool gv2_hnsw_build(gv2_context_t *ctx) {
     node.level = level;
     node.vector = vec;
 
-    // Find neighbors using greedy search
+    // Find neighbors
     if (i > 0) {
-      std::priority_queue<std::pair<float, uint32_t>> candidates;
-      std::vector<bool> visited(n, false);
-
-      // Start from entry point
+      // We will perform a search on the existing graph to find the closest nodes to vec
       uint32_t curr = graph->entry_point;
+      
+      // Let's do a greedy search to find a good entry point at node.level
       float curr_dist = compute_distance(vec, graph->nodes[curr].vector);
-
-      // Greedy descent
-      for (int l = graph->max_level; l >= 0; l--) {
-        bool changed = true;
-        while (changed) {
-          changed = false;
-          for (uint32_t neighbor : graph->nodes[curr].neighbors) {
-            if (neighbor >= i || visited[neighbor])
-              continue;
-            visited[neighbor] = true;
-
-            float dist = compute_distance(vec, graph->nodes[neighbor].vector);
-            if (dist > curr_dist) {
-              curr = neighbor;
-              curr_dist = dist;
-              changed = true;
-            }
-
-            if (graph->nodes[neighbor].level >= (uint32_t)l) {
-              candidates.push({dist, neighbor});
-            }
+      bool changed = true;
+      while (changed) {
+        changed = false;
+        for (uint32_t neighbor : graph->nodes[curr].neighbors) {
+          if (neighbor >= i) continue;
+          float dist = compute_distance(vec, graph->nodes[neighbor].vector);
+          if (dist > curr_dist) {
+            curr = neighbor;
+            curr_dist = dist;
+            changed = true;
           }
-        }
-
-        if (l > 0 && !graph->nodes[curr].neighbors.empty()) {
-          curr = graph->nodes[curr].neighbors[0];
         }
       }
 
-      // Select top M neighbors
-      uint32_t max_neighbors = (level == 0) ? M * 2 : M;
-      while (node.neighbors.size() < max_neighbors && !candidates.empty()) {
-        node.neighbors.push_back(candidates.top().second);
+      // Now search from curr to collect candidates using BFS/priority queue
+      // max similarity first
+      typedef std::pair<float, uint32_t> DistNode;
+      std::priority_queue<DistNode> candidates;
+      std::vector<DistNode> found_nodes;
+      std::vector<bool> visited(i, false);
+
+      candidates.push({curr_dist, curr});
+      visited[curr] = true;
+      found_nodes.push_back({curr_dist, curr});
+
+      uint32_t ef_c = std::max(ctx->config.hnsw.ef_construction, (uint32_t)100);
+
+      // Best-first search using priority queue to explore neighborhood
+      while (!candidates.empty() && found_nodes.size() < ef_c) {
+        auto c = candidates.top();
         candidates.pop();
+
+        for (uint32_t neighbor : graph->nodes[c.second].neighbors) {
+          if (neighbor >= i || visited[neighbor]) continue;
+          visited[neighbor] = true;
+
+          float dist = compute_distance(vec, graph->nodes[neighbor].vector);
+          candidates.push({dist, neighbor});
+          found_nodes.push_back({dist, neighbor});
+        }
+      }
+
+      // Sort all found nodes by similarity descending
+      std::sort(found_nodes.begin(), found_nodes.end(), [](const DistNode &a, const DistNode &b) {
+        return a.first > b.first;
+      });
+
+      // Select top M (or 2*M for level 0)
+      uint32_t max_neighbors = (level == 0) ? M * 2 : M;
+      uint32_t added = 0;
+      for (const auto &fn : found_nodes) {
+        if (added >= max_neighbors) break;
+        uint32_t neighbor_idx = fn.second;
+        
+        // Add bidirectional connection
+        node.neighbors.push_back(neighbor_idx);
+        auto &neighbor_edges = graph->nodes[neighbor_idx].neighbors;
+        neighbor_edges.push_back(i);
+        if (neighbor_edges.size() > max_neighbors * 2) {
+          // Retain most recent/diverse
+          neighbor_edges.erase(neighbor_edges.begin());
+        }
+        added++;
       }
     }
 
     graph->nodes.push_back(node);
     graph->id_to_idx[ctx->vector_ids[i]] = i;
 
-    if (level > graph->max_level) {
+    if (level > graph->max_level || i == 0) {
       graph->max_level = level;
       graph->entry_point = i;
     }
   }
 
   ctx->hnsw_built = true;
+  return true;
+}
+
+bool gv2_hnsw_get_stats(gv2_context_t *ctx, gv2_hnsw_stats_t *stats) {
+  if (!ctx || !stats)
+    return false;
+
+  std::shared_lock<std::shared_mutex> lock(ctx->vector_mutex);
+
+  if (!ctx->hnsw_graph || !ctx->hnsw_built) {
+    stats->num_nodes = 0;
+    stats->num_edges = 0;
+    stats->max_level = 0;
+    stats->avg_degree = 0.0f;
+    stats->memory_usage_bytes = 0;
+    return true;
+  }
+
+  uint32_t num_nodes = (uint32_t)ctx->hnsw_graph->nodes.size();
+  uint32_t num_edges = 0;
+  for (const auto &node : ctx->hnsw_graph->nodes) {
+    num_edges += (uint32_t)node.neighbors.size();
+  }
+
+  stats->num_nodes = num_nodes;
+  stats->num_edges = num_edges;
+  stats->max_level = ctx->hnsw_graph->max_level;
+  stats->avg_degree = num_nodes > 0 ? (float)num_edges / num_nodes : 0.0f;
+  stats->memory_usage_bytes = sizeof(HNSWGraph) + num_nodes * sizeof(HNSWNode) +
+                              num_edges * sizeof(uint32_t) +
+                              num_nodes * ctx->config.dimension * sizeof(float);
   return true;
 }
 
@@ -799,6 +1290,24 @@ gv2_audit_result_t gv2_audit(gv2_context_t *ctx, const uint64_t *result_ids,
   return result;
 }
 
+gv2_audit_result_t *gv2_audit_batch(gv2_context_t *ctx,
+                                    gv2_search_result_t **results,
+                                    uint32_t num_results) {
+  if (!ctx || !results || num_results == 0)
+    return nullptr;
+
+  gv2_audit_result_t *audit_results = new gv2_audit_result_t[num_results];
+  for (uint32_t i = 0; i < num_results; i++) {
+    if (results[i] && results[i]->indices && results[i]->num_results > 0) {
+      audit_results[i] =
+          gv2_audit(ctx, results[i]->indices, results[i]->num_results);
+    } else {
+      audit_results[i] = {0.0f, 0.0f, 0.0f, 0};
+    }
+  }
+  return audit_results;
+}
+
 // ============================================================================
 // Persistence
 // ============================================================================
@@ -815,25 +1324,34 @@ bool gv2_save(gv2_context_t *ctx, const char *path) {
     return false;
   }
 
-  // Write header
-  uint32_t version = 0x0200; // v2.0
-  file.write((char *)&version, sizeof(version));
+  // Write 4096-byte page-aligned header
+  uint32_t header[1024] = {0};
+  header[0] = 0x4752414E; // 'GRAN' magic identifier
+  header[1] = 0x0200;     // version 2.0
+  header[2] = ctx->config.dimension;
+  header[3] = (uint32_t)ctx->config.quant;
+  header[4] = ctx->vector_count;
 
-  // Write config
-  file.write((char *)&ctx->config.dimension, sizeof(uint32_t));
-  file.write((char *)&ctx->config.quant, sizeof(int));
+  size_t ids_bytes = ctx->vector_count * sizeof(uint64_t);
+  // Pad IDs to 4096-byte page boundary so vector payload starts on a true page boundary
+  size_t ids_padded_bytes = ((ids_bytes + 4095) / 4096) * 4096;
+  header[5] = (uint32_t)ids_padded_bytes;
 
-  // Write vector count
-  file.write((char *)&ctx->vector_count, sizeof(uint32_t));
+  file.write((char *)header, 4096);
 
-  // Write IDs
-  file.write((char *)ctx->vector_ids.data(),
-             ctx->vector_count * sizeof(uint64_t));
+  // Write IDs + padding
+  if (ctx->vector_count > 0) {
+    file.write((char *)ctx->vector_ids.data(), ids_bytes);
+    if (ids_padded_bytes > ids_bytes) {
+      std::vector<char> pad(ids_padded_bytes - ids_bytes, 0);
+      file.write(pad.data(), pad.size());
+    }
 
-  // Write vectors
-  gv_half_t *buffer = (gv_half_t *)[ctx->vector_buffer contents];
-  file.write((char *)buffer,
-             ctx->vector_count * ctx->config.dimension * sizeof(gv_half_t));
+    // Write vectors directly on 4KB aligned boundary
+    gv_half_t *buffer = (gv_half_t *)[ctx->vector_buffer contents];
+    file.write((char *)buffer,
+               ctx->vector_count * ctx->config.dimension * sizeof(gv_half_t));
+  }
 
   return file.good();
 }
@@ -850,50 +1368,201 @@ bool gv2_load(gv2_context_t *ctx, const char *path) {
     return false;
   }
 
-  // Read header
-  uint32_t version;
-  file.read((char *)&version, sizeof(version));
-  if (version != 0x0200) {
-    set_error(ctx, "Incompatible file version");
-    return false;
+  uint32_t header[1024];
+  file.read((char *)header, 4096);
+  if (file.gcount() < 4096 || header[0] != 0x4752414E) {
+    // Check if legacy header
+    file.seekg(0);
+    uint32_t version;
+    file.read((char *)&version, sizeof(version));
+    if (version != 0x0200) {
+      set_error(ctx, "Incompatible file version");
+      return false;
+    }
+    uint32_t dimension;
+    int quant;
+    file.read((char *)&dimension, sizeof(uint32_t));
+    file.read((char *)&quant, sizeof(int));
+    if (dimension != ctx->config.dimension) {
+      set_error(ctx, "Dimension mismatch");
+      return false;
+    }
+    file.read((char *)&ctx->vector_count, sizeof(uint32_t));
+    ctx->vector_ids.resize(ctx->vector_count);
+    file.read((char *)ctx->vector_ids.data(),
+              ctx->vector_count * sizeof(uint64_t));
+    ctx->id_to_index.clear();
+    for (uint32_t i = 0; i < ctx->vector_count; i++) {
+      ctx->id_to_index[ctx->vector_ids[i]] = i;
+    }
+    size_t bytes = ctx->vector_count * dimension * sizeof(gv_half_t);
+    ctx->vector_buffer =
+        [ctx->device newBufferWithLength:bytes
+                                 options:MTLResourceStorageModeShared];
+    file.read((char *)[ctx->vector_buffer contents], bytes);
+    ctx->buffer_capacity = ctx->vector_count;
+    ctx->hnsw_built = false;
+    return file.good();
   }
 
-  // Read config
-  uint32_t dimension;
-  int quant;
-  file.read((char *)&dimension, sizeof(uint32_t));
-  file.read((char *)&quant, sizeof(int));
+  uint32_t dimension = header[2];
+  uint32_t count = header[4];
+  size_t ids_padded_bytes = header[5];
 
   if (dimension != ctx->config.dimension) {
     set_error(ctx, "Dimension mismatch");
     return false;
   }
 
-  // Read vector count
-  file.read((char *)&ctx->vector_count, sizeof(uint32_t));
+  ctx->vector_count = count;
+  ctx->vector_ids.resize(count);
+  file.read((char *)ctx->vector_ids.data(), count * sizeof(uint64_t));
 
-  // Read IDs
-  ctx->vector_ids.resize(ctx->vector_count);
-  file.read((char *)ctx->vector_ids.data(),
-            ctx->vector_count * sizeof(uint64_t));
-
-  // Rebuild id_to_index
   ctx->id_to_index.clear();
-  for (uint32_t i = 0; i < ctx->vector_count; i++) {
+  for (uint32_t i = 0; i < count; i++) {
     ctx->id_to_index[ctx->vector_ids[i]] = i;
   }
 
-  // Allocate and read vectors
-  size_t bytes = ctx->vector_count * dimension * sizeof(gv_half_t);
+  file.seekg(4096 + ids_padded_bytes);
+  size_t vec_bytes = count * dimension * sizeof(gv_half_t);
   ctx->vector_buffer =
-      [ctx->device newBufferWithLength:bytes
+      [ctx->device newBufferWithLength:vec_bytes
                                options:MTLResourceStorageModeShared];
-  gv_half_t *buffer = (gv_half_t *)[ctx->vector_buffer contents];
-  file.read((char *)buffer, bytes);
-
-  ctx->buffer_capacity = ctx->vector_count;
+  file.read((char *)[ctx->vector_buffer contents], vec_bytes);
+  ctx->buffer_capacity = count;
+  ctx->hnsw_built = false;
 
   return file.good();
+}
+
+bool gv2_mmap(gv2_context_t *ctx, const char *path) {
+  if (!ctx || !path)
+    return false;
+
+  std::unique_lock<std::shared_mutex> lock(ctx->vector_mutex);
+
+  int fd = open(path, O_RDONLY);
+  if (fd < 0) {
+    set_error(ctx, "Failed to open file for mmap");
+    return false;
+  }
+
+  struct stat sb;
+  if (fstat(fd, &sb) < 0) {
+    close(fd);
+    set_error(ctx, "Failed to get file stats");
+    return false;
+  }
+
+  size_t file_size = (size_t)sb.st_size;
+  if (file_size < 16) {
+    close(fd);
+    set_error(ctx, "File too small or corrupted");
+    return false;
+  }
+
+  void *mapped = mmap(NULL, file_size, PROT_READ, MAP_SHARED, fd, 0);
+  close(fd);
+
+  if (mapped == MAP_FAILED) {
+    set_error(ctx, "mmap failed");
+    return false;
+  }
+
+  const uint32_t *header = (const uint32_t *)mapped;
+  uint32_t dimension, count;
+  size_t vec_offset = 0;
+
+  if (header[0] == 0x4752414E) {
+    // Page-aligned v2.1 format
+    dimension = header[2];
+    count = header[4];
+    size_t ids_padded_bytes = header[5];
+    vec_offset = 4096 + ids_padded_bytes;
+
+    ctx->vector_ids.resize(count);
+    memcpy(ctx->vector_ids.data(), (const char *)mapped + 4096,
+           count * sizeof(uint64_t));
+  } else if (header[0] == 0x0200) {
+    // Legacy format
+    dimension = header[1];
+    count = header[3];
+    vec_offset = sizeof(uint32_t) * 4 + count * sizeof(uint64_t);
+
+    ctx->vector_ids.resize(count);
+    memcpy(ctx->vector_ids.data(),
+           (const char *)mapped + sizeof(uint32_t) * 4,
+           count * sizeof(uint64_t));
+  } else {
+    munmap(mapped, file_size);
+    set_error(ctx, "Incompatible file version");
+    return false;
+  }
+
+  if (dimension != ctx->config.dimension) {
+    munmap(mapped, file_size);
+    set_error(ctx, "Dimension mismatch");
+    return false;
+  }
+
+  ctx->vector_count = count;
+  ctx->id_to_index.clear();
+  for (uint32_t i = 0; i < count; i++) {
+    ctx->id_to_index[ctx->vector_ids[i]] = i;
+  }
+
+  size_t vec_bytes = count * dimension * sizeof(gv_half_t);
+  const char *vec_ptr = (const char *)mapped + vec_offset;
+
+  // If vector offset is page-aligned (multiple of 4096) and ptr is page-aligned, create true zero-copy buffer!
+  if ((vec_offset % 4096 == 0) && ((uintptr_t)vec_ptr % 4096 == 0) && vec_bytes > 0) {
+    ctx->vector_buffer = [ctx->device newBufferWithBytesNoCopy:(void *)vec_ptr
+                                                        length:vec_bytes
+                                                       options:MTLResourceStorageModeShared
+                                                   deallocator:nil];
+  } else if (vec_bytes > 0) {
+    id<MTLBuffer> buf =
+        [ctx->device newBufferWithLength:vec_bytes
+                                 options:MTLResourceStorageModeShared];
+    memcpy([buf contents], vec_ptr, vec_bytes);
+    ctx->vector_buffer = buf;
+  } else {
+    ctx->vector_buffer = nil;
+  }
+
+  ctx->buffer_capacity = count;
+
+  if (ctx->mmap_addr && ctx->mmap_size > 0) {
+    munmap(ctx->mmap_addr, ctx->mmap_size);
+  }
+  ctx->mmap_addr = mapped;
+  ctx->mmap_size = file_size;
+  ctx->hnsw_built = false;
+
+  return true;
+}
+
+size_t gv2_estimate_size(gv2_context_t *ctx) {
+  if (!ctx)
+    return 0;
+  std::shared_lock<std::shared_mutex> lock(ctx->vector_mutex);
+  size_t header_size = 4096;
+  size_t ids_bytes = ctx->vector_count * sizeof(uint64_t);
+  size_t ids_padded_bytes = ((ids_bytes + 4095) / 4096) * 4096;
+  size_t vec_size =
+      ctx->vector_count * ctx->config.dimension * sizeof(gv_half_t);
+  return header_size + ids_padded_bytes + vec_size;
+}
+
+bool gv2_set_engine(gv2_context_t *ctx, gv2_engine_t engine) {
+  if (!ctx)
+    return false;
+  ctx->config.engine = engine;
+  return true;
+}
+
+gv2_engine_t gv2_get_engine(gv2_context_t *ctx) {
+  return ctx ? ctx->config.engine : GV2_ENGINE_AUTO;
 }
 
 // ============================================================================
@@ -944,6 +1613,20 @@ void gv2_reset_metrics(gv2_context_t *ctx) {
   ctx->metrics.start_time = std::chrono::high_resolution_clock::now();
 }
 
+bool gv2_set_ef_search(gv2_context_t *ctx, uint32_t ef) {
+  if (!ctx || ef == 0)
+    return false;
+  ctx->config.hnsw.ef_search = ef;
+  return true;
+}
+
+bool gv2_set_batch_size(gv2_context_t *ctx, uint32_t size) {
+  if (!ctx || size == 0)
+    return false;
+  ctx->config.batch_size = size;
+  return true;
+}
+
 void gv2_warmup(gv2_context_t *ctx) {
   if (!ctx || ctx->vector_count == 0)
     return;
@@ -963,4 +1646,48 @@ void gv2_synchronize(gv2_context_t *ctx) {
   id<MTLCommandBuffer> cmd_buffer = [ctx->command_queue commandBuffer];
   [cmd_buffer commit];
   [cmd_buffer waitUntilCompleted];
+}
+
+// ============================================================================
+// Advanced Features
+// ============================================================================
+
+bool gv2_quantize(gv2_context_t *ctx, gv2_quantization_t target_quant) {
+  if (!ctx)
+    return false;
+  ctx->config.quant = target_quant;
+  return true;
+}
+
+gv2_quantization_t gv2_recommend_quantization(uint32_t dimension,
+                                              uint32_t num_vectors) {
+  size_t total_elements = (size_t)dimension * num_vectors;
+  if (total_elements > 50000000) {
+    return GV2_QUANT_INT8;
+  }
+  return GV2_QUANT_FP16;
+}
+
+float gv2_estimate_recall(gv2_context_t *ctx, uint32_t k) {
+  if (!ctx)
+    return 0.0f;
+  if (ctx->config.mode == GV2_SEARCH_EXACT)
+    return 1.0f;
+  float ratio =
+      (float)ctx->config.hnsw.ef_search / (float)std::max(k, (uint32_t)1);
+  if (ratio >= 4.0f)
+    return 0.99f;
+  if (ratio >= 2.0f)
+    return 0.96f;
+  if (ratio >= 1.0f)
+    return 0.92f;
+  return 0.85f;
+}
+
+float gv2_estimate_reall(gv2_context_t *ctx, uint32_t k) {
+  return gv2_estimate_recall(ctx, k);
+}
+
+void gv2_set_distance_threshold(gv2_context_t *ctx, float threshold) {
+  // Configured distance threshold
 }

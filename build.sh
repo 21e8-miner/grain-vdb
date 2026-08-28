@@ -67,6 +67,7 @@ xcrun -sdk macosx clang++ \
     -fmodules \
     -framework Metal \
     -framework Foundation \
+    -framework Accelerate \
     -O3 \
     -std=c++17 \
     -I"${INCLUDE_DIR}" \

@@ -1,23 +1,25 @@
-# Build artifacts
-dist/
-dist/*
+# Compiled libraries and build artifacts
+build/
+*.air
+*.metallib
+*.dylib
+*.so
 *.o
 *.a
-*.metallib
-*.air
-tests/stress_test_bin
+*.gvdb
+.build/
+.swiftpm/
 
 # Python
 __pycache__/
-*.pyc
-venv/
-.venv/
-build/
-egg-info/
+*.py[cod]
+*$py.class
 *.egg-info/
+dist/
+.eggs/
+.pytest_cache/
 
-# System
+# OS / IDE
 .DS_Store
-.agent/
 .vscode/
-.internal/
+.idea/
