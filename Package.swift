@@ -31,7 +31,10 @@ let package = Package(
         .target(
             name: "GrainVDB",
             dependencies: ["CGrainVDB"],
-            path: "Sources/GrainVDB"
+            path: "Sources/GrainVDB",
+            resources: [
+                .copy("gv_kernel.metallib")
+            ]
         ),
         .testTarget(
             name: "GrainVDBTests",

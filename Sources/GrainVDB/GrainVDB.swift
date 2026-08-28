@@ -146,7 +146,7 @@ public final class GrainVDB {
 
         let success = flat.withUnsafeBufferPointer { flatBuf in
             assignedIDs.withUnsafeBufferPointer { idBuf in
-                gv2_add_vectors(ctx, flatBuf.baseAddress, idBuf.baseAddress, UInt32(n))
+                gv2_add_vectors(ctx, flatBuf.baseAddress, UInt32(n), idBuf.baseAddress)
             }
         }
 
@@ -162,6 +162,13 @@ public final class GrainVDB {
                 }
             }
         }
+    }
+
+    /// Get metadata for a specific vector ID.
+    public func getMetadata(for id: UInt64) -> [String: Any]? {
+        lock.lock()
+        defer { lock.unlock() }
+        return metadataStore[id]
     }
 
     /// Search for top-K nearest neighbors.
@@ -236,6 +243,19 @@ public final class GrainVDB {
             let errorMsg = gv2_get_error(ctx).map { String(cString: $0) } ?? "Save failed"
             throw NSError(domain: "GrainVDB", code: -8, userInfo: [NSLocalizedDescriptionKey: errorMsg])
         }
+
+        // Save metadata sidecar
+        let metaPath = path + ".meta"
+        do {
+            var stringKeyedMeta: [String: [String: Any]] = [:]
+            for (key, val) in metadataStore {
+                stringKeyedMeta[String(key)] = val
+            }
+            let data = try JSONSerialization.data(withJSONObject: stringKeyedMeta, options: [.sortedKeys])
+            try data.write(to: URL(fileURLWithPath: metaPath))
+        } catch {
+            print("Warning: Failed to save metadata: \(error)")
+        }
     }
 
     /// Load database from disk.
@@ -247,6 +267,24 @@ public final class GrainVDB {
             let errorMsg = gv2_get_error(ctx).map { String(cString: $0) } ?? "Load failed"
             throw NSError(domain: "GrainVDB", code: -9, userInfo: [NSLocalizedDescriptionKey: errorMsg])
         }
+
+        // Load metadata sidecar
+        let metaPath = path + ".meta"
+        metadataStore.removeAll()
+        if FileManager.default.fileExists(atPath: metaPath) {
+            do {
+                let data = try Data(contentsOf: URL(fileURLWithPath: metaPath))
+                if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: [String: Any]] {
+                    for (keyStr, val) in json {
+                        if let key = UInt64(keyStr) {
+                            metadataStore[key] = val
+                        }
+                    }
+                }
+            } catch {
+                print("Warning: Failed to load metadata: \(error)")
+            }
+        }
     }
 
     /// Open database with zero-copy page-aligned memory mapping.
@@ -257,6 +295,24 @@ public final class GrainVDB {
         guard gv2_mmap(ctx, (path as NSString).utf8String) else {
             let errorMsg = gv2_get_error(ctx).map { String(cString: $0) } ?? "mmap failed"
             throw NSError(domain: "GrainVDB", code: -10, userInfo: [NSLocalizedDescriptionKey: errorMsg])
+        }
+
+        // Load metadata sidecar
+        let metaPath = path + ".meta"
+        metadataStore.removeAll()
+        if FileManager.default.fileExists(atPath: metaPath) {
+            do {
+                let data = try Data(contentsOf: URL(fileURLWithPath: metaPath))
+                if let json = try JSONSerialization.jsonObject(with: data, options: []) as? [String: [String: Any]] {
+                    for (keyStr, val) in json {
+                        if let key = UInt64(keyStr) {
+                            metadataStore[key] = val
+                        }
+                    }
+                }
+            } catch {
+                print("Warning: Failed to load metadata: \(error)")
+            }
         }
     }
 }

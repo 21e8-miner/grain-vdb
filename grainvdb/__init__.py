@@ -20,6 +20,7 @@ from .ingest import (
     DocumentChunker,
     LocalIngestPipeline,
 )
+from .integrations import CuaGrainMemory
 
 __version__ = "2.0.0"
 __all__ = [
@@ -39,4 +40,5 @@ __all__ = [
     "get_embedding_provider",
     "DocumentChunker",
     "LocalIngestPipeline",
+    "CuaGrainMemory",
 ]

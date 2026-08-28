@@ -481,6 +481,11 @@ class GrainVDB:
                 raise KeyError(f"Vector ID {vector_id} not found")
             return out
 
+    def get_metadata(self, vector_id: int) -> Optional[Dict[str, Any]]:
+        """Get stored metadata by vector ID."""
+        with self._lock:
+            return self._metadata.get(int(vector_id))
+
     def update_vector(
         self,
         vector_id: int,
@@ -832,7 +837,18 @@ class GrainVDB:
             True if successful
         """
         with self._lock:
-            return self._lib.gv2_save(self._ctx, str(path).encode('utf-8'))
+            success = self._lib.gv2_save(self._ctx, str(path).encode('utf-8'))
+            if success:
+                try:
+                    import json
+                    meta_path = Path(path).with_suffix(Path(path).suffix + ".meta")
+                    # Convert keys to string for JSON serialization
+                    meta_to_save = {str(k): v for k, v in self._metadata.items()}
+                    with open(meta_path, "w") as f:
+                        json.dump(meta_to_save, f, indent=2)
+                except Exception as e:
+                    warnings.warn(f"Failed to save metadata sidecar: {e}")
+            return success
     
     def load(self, path: Union[str, Path]) -> bool:
         """
@@ -848,6 +864,17 @@ class GrainVDB:
             success = self._lib.gv2_load(self._ctx, str(path).encode('utf-8'))
             if success:
                 self._vector_count = self.vector_count
+                try:
+                    import json
+                    meta_path = Path(path).with_suffix(Path(path).suffix + ".meta")
+                    if meta_path.exists():
+                        with open(meta_path, "r") as f:
+                            meta_loaded = json.load(f)
+                        self._metadata = {int(k): v for k, v in meta_loaded.items()}
+                    else:
+                        self._metadata = {}
+                except Exception as e:
+                    warnings.warn(f"Failed to load metadata sidecar: {e}")
             return success
 
     def mmap(self, path: Union[str, Path]) -> bool:
@@ -864,6 +891,17 @@ class GrainVDB:
             success = self._lib.gv2_mmap(self._ctx, str(path).encode('utf-8'))
             if success:
                 self._vector_count = self.vector_count
+                try:
+                    import json
+                    meta_path = Path(path).with_suffix(Path(path).suffix + ".meta")
+                    if meta_path.exists():
+                        with open(meta_path, "r") as f:
+                            meta_loaded = json.load(f)
+                        self._metadata = {int(k): v for k, v in meta_loaded.items()}
+                    else:
+                        self._metadata = {}
+                except Exception as e:
+                    warnings.warn(f"Failed to load metadata sidecar: {e}")
             return success
 
     def estimate_size(self) -> int:

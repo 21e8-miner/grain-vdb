@@ -128,6 +128,7 @@ class TestGrainVDB(unittest.TestCase):
         try:
             self.assertTrue(vdb.save(tmp_path))
             self.assertGreater(os.path.getsize(tmp_path), 0)
+            self.assertTrue(os.path.exists(tmp_path + ".meta"))
 
             # Load into new database instance
             vdb_loaded = GrainVDB(dim=self.dim, mode=SearchMode.EXACT)
@@ -137,14 +138,19 @@ class TestGrainVDB(unittest.TestCase):
             # Query loaded database
             result = vdb_loaded.search(self.vectors[10], k=3)
             self.assertEqual(result.indices[0], 10)
+            self.assertIsNotNone(result.metadata)
+            self.assertEqual(result.metadata[0]["doc_id"], 10)
+            self.assertEqual(result.metadata[0]["category"], self.metadata[10]["category"])
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
+            if os.path.exists(tmp_path + ".meta"):
+                os.remove(tmp_path + ".meta")
 
     def test_mmap_persistence(self):
         """Test memory-mapped zero-copy index loading."""
         vdb = GrainVDB(dim=self.dim, mode=SearchMode.EXACT)
-        vdb.add_vectors(self.vectors)
+        vdb.add_vectors(self.vectors, metadata=self.metadata)
 
         with tempfile.NamedTemporaryFile(suffix=".gvdb", delete=False) as tmp:
             tmp_path = tmp.name
@@ -158,9 +164,14 @@ class TestGrainVDB(unittest.TestCase):
 
             result = vdb_mmap.search(self.vectors[5], k=3)
             self.assertEqual(result.indices[0], 5)
+            self.assertIsNotNone(result.metadata)
+            self.assertEqual(result.metadata[0]["doc_id"], 5)
+            self.assertEqual(result.metadata[0]["category"], self.metadata[5]["category"])
         finally:
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
+            if os.path.exists(tmp_path + ".meta"):
+                os.remove(tmp_path + ".meta")
 
     def test_topology_audit(self):
         """Test semantic coherence audit."""
