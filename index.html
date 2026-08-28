@@ -49,15 +49,18 @@
             <nav class="hidden md:flex items-center space-x-8 text-sm font-medium text-slate-300">
                 <a href="#interactive-demo" class="hover:text-sky-400 transition">Interactive Demo</a>
                 <a href="#benchmarks" class="hover:text-sky-400 transition">Benchmarks</a>
-                <a href="#architecture" class="hover:text-sky-400 transition">Architecture</a>
                 <a href="#quickstart" class="hover:text-sky-400 transition">Quickstart</a>
+                <a href="#pricing" class="hover:text-purple-400 transition font-semibold text-purple-300">Pricing & Licensing</a>
                 <a href="https://github.com/21e8-miner/grain-vdb/releases/tag/v2.0.0" target="_blank" class="hover:text-sky-400 transition">Release Notes</a>
             </nav>
 
             <div class="flex items-center space-x-3">
-                <a href="https://github.com/21e8-miner/grain-vdb" target="_blank" class="px-4 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-white font-medium text-xs border border-slate-700 transition flex items-center space-x-2 shadow-sm">
-                    <svg class="w-4 h-4 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
-                    <span>Star on GitHub</span>
+                <button onclick="openLicenseModal('Commercial Pro', '$49 one-time')" class="px-4 py-2 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold text-xs shadow-md transition">
+                    Buy Pro License ($49)
+                </button>
+                <a href="https://github.com/21e8-miner/grain-vdb" target="_blank" class="px-3 py-2 rounded-xl bg-slate-800/90 hover:bg-slate-700 text-white font-medium text-xs border border-slate-700 transition flex items-center space-x-1.5 shadow-sm">
+                    <svg class="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24"><path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z"/></svg>
+                    <span>Star</span>
                 </a>
             </div>
         </div>
@@ -346,11 +349,199 @@ print(docs[0].page_content)</code></pre>
         </div>
     </section>
 
+    <!-- Commercial Pricing & Licensing Section -->
+    <section id="pricing" class="py-16 max-w-7xl mx-auto px-6 border-t border-slate-800/80">
+        <div class="text-center space-y-3 mb-12">
+            <span class="text-xs px-3 py-1 rounded-full bg-purple-500/10 text-purple-400 border border-purple-500/20 mono font-semibold uppercase tracking-wider">Commercial & Enterprise</span>
+            <h2 class="text-3xl sm:text-4xl font-bold text-white">Commercial Licensing & Support</h2>
+            <p class="text-slate-400 text-sm max-w-2xl mx-auto">Free for open-source. Simple, fair commercial licenses for proprietary apps and enterprise deployments.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
+            <!-- Tier 1: Community -->
+            <div class="glass-card rounded-2xl p-6 flex flex-col justify-between border border-slate-800">
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-mono px-2.5 py-1 rounded bg-slate-800 text-slate-300 font-semibold">Community</span>
+                        <span class="text-xs text-slate-500 mono">MIT License</span>
+                    </div>
+                    <div>
+                        <div class="text-3xl font-extrabold text-white">$0</div>
+                        <p class="text-slate-400 text-xs mt-1">Free forever for personal, academic & open-source use.</p>
+                    </div>
+                    <ul class="space-y-2.5 text-xs text-slate-300 pt-3 border-t border-slate-800">
+                        <li class="flex items-center space-x-2">
+                            <span class="text-emerald-400">✓</span>
+                            <span>Full source code access (Metal + C++ + Swift)</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <span class="text-emerald-400">✓</span>
+                            <span>ARM NEON & Metal GPU Dual-Engine</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <span class="text-emerald-400">✓</span>
+                            <span>Zero-copy page-aligned mmap</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <span class="text-slate-500">✗</span>
+                            <span class="text-slate-500">Closed-source commercial redistribution</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="pt-6">
+                    <a href="https://github.com/21e8-miner/grain-vdb" target="_blank" class="w-full block text-center py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold text-xs border border-slate-700 transition">
+                        View GitHub Source
+                    </a>
+                </div>
+            </div>
+
+            <!-- Tier 2: Commercial Pro (Highlighted) -->
+            <div class="glass rounded-2xl p-6 flex flex-col justify-between border-2 border-sky-500 glow-sky relative">
+                <div class="absolute -top-3 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 text-[10px] font-bold text-white uppercase tracking-wider shadow">
+                    Most Popular for Mac ISVs
+                </div>
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center pt-2">
+                        <span class="text-xs font-mono px-2.5 py-1 rounded bg-sky-500/20 text-sky-300 font-semibold border border-sky-500/30">Commercial Pro</span>
+                        <span class="text-xs text-sky-400 mono">Perpetual</span>
+                    </div>
+                    <div>
+                        <div class="flex items-baseline space-x-1">
+                            <span class="text-3xl font-extrabold text-white">$49</span>
+                            <span class="text-slate-400 text-xs">/ one-time license</span>
+                        </div>
+                        <p class="text-slate-400 text-xs mt-1">Perpetual rights to embed GrainVDB in proprietary apps.</p>
+                    </div>
+                    <ul class="space-y-2.5 text-xs text-slate-200 pt-3 border-t border-slate-800">
+                        <li class="flex items-center space-x-2">
+                            <span class="text-sky-400">✓</span>
+                            <span><strong>Closed-source redistribution</strong> (macOS & iOS App Store)</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <span class="text-sky-400">✓</span>
+                            <span>Pre-compiled & signed universal binaries</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <span class="text-sky-400">✓</span>
+                            <span>No open-source attribution requirements</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <span class="text-sky-400">✓</span>
+                            <span>Priority email & developer Slack support</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="pt-6">
+                    <button onclick="openLicenseModal('Commercial Pro', '$49 one-time')" class="w-full py-2.5 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold text-xs shadow-lg shadow-sky-500/25 transition">
+                        Get Commercial Pro License
+                    </button>
+                </div>
+            </div>
+
+            <!-- Tier 3: Enterprise Sovereign -->
+            <div class="glass-card rounded-2xl p-6 flex flex-col justify-between border border-slate-800">
+                <div class="space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-mono px-2.5 py-1 rounded bg-purple-500/20 text-purple-300 font-semibold border border-purple-500/30">Enterprise Sovereign</span>
+                        <span class="text-xs text-purple-400 mono">Annual / Pilot</span>
+                    </div>
+                    <div>
+                        <div class="flex items-baseline space-x-1">
+                            <span class="text-3xl font-extrabold text-white">$999</span>
+                            <span class="text-slate-400 text-xs">/ year</span>
+                        </div>
+                        <p class="text-slate-400 text-xs mt-1">For law firms, healthcare, media studios & Mac clusters.</p>
+                    </div>
+                    <ul class="space-y-2.5 text-xs text-slate-300 pt-3 border-t border-slate-800">
+                        <li class="flex items-center space-x-2">
+                            <span class="text-purple-400">✓</span>
+                            <span>Custom Metal shader kernel optimization</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <span class="text-purple-400">✓</span>
+                            <span>Mac Studio cluster & on-premise deployment</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <span class="text-purple-400">✓</span>
+                            <span>HIPAA & GDPR data residency compliance attestation</span>
+                        </li>
+                        <li class="flex items-center space-x-2">
+                            <span class="text-purple-400">✓</span>
+                            <span>Dedicated SLA & direct architectural consulting</span>
+                        </li>
+                    </ul>
+                </div>
+                <div class="pt-6">
+                    <button onclick="openLicenseModal('Enterprise Sovereign', '$999/year')" class="w-full py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs transition">
+                        Request Enterprise Pilot
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- License Purchase / Pilot Request Modal -->
+    <div id="licenseModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
+        <div class="glass rounded-3xl p-6 sm:p-8 max-w-md w-full border border-slate-700 shadow-2xl relative space-y-4">
+            <button onclick="closeLicenseModal()" class="absolute right-4 top-4 text-slate-400 hover:text-white text-lg">✕</button>
+            <div class="space-y-1">
+                <span class="text-xs font-mono px-2.5 py-0.5 rounded bg-sky-500/10 text-sky-400 border border-sky-500/20 font-semibold" id="modalPlanBadge">Commercial Pro</span>
+                <h3 class="text-xl font-bold text-white mt-1">Get Your License</h3>
+                <p class="text-xs text-slate-400">Instant activation key and access to pre-compiled Apple Silicon binaries.</p>
+            </div>
+
+            <form onsubmit="submitLicenseLead(event)" class="space-y-3 pt-2 text-xs">
+                <div>
+                    <label class="text-slate-300 font-medium">Work Email</label>
+                    <input type="email" id="leadEmail" required placeholder="developer@company.com" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-sky-500">
+                </div>
+                <div>
+                    <label class="text-slate-300 font-medium">Company / App Name</label>
+                    <input type="text" id="leadCompany" placeholder="e.g. Acme Software / Personal Project" class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-sky-500">
+                </div>
+                <div>
+                    <label class="text-slate-300 font-medium">Use Case / Notes</label>
+                    <textarea id="leadNotes" rows="2" placeholder="e.g. Embedding in commercial macOS writing app..." class="w-full mt-1 bg-slate-900 border border-slate-700 rounded-xl p-3 text-slate-200 focus:outline-none focus:border-sky-500"></textarea>
+                </div>
+                <div class="pt-2">
+                    <button type="submit" class="w-full py-3 rounded-xl bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold shadow-lg shadow-sky-500/25 transition">
+                        Proceed to Checkout / Invoice →
+                    </button>
+                </div>
+                <p class="text-[10px] text-slate-500 text-center">30-day money-back guarantee · Instant delivery</p>
+            </form>
+        </div>
+    </div>
+
     <!-- Footer -->
     <footer class="border-t border-slate-800/80 py-12 text-center text-xs text-slate-500 mono space-y-3">
-        <p>GrainVDB is MIT Licensed & Open Source. Built for the sovereign Apple Silicon edge AI ecosystem.</p>
-        <p>© 2026 GrainVDB Contributors · <a href="https://github.com/21e8-miner/grain-vdb" class="text-sky-400 underline">GitHub Repository</a> · <a href="https://github.com/21e8-miner/grain-vdb/releases/tag/v2.0.0" class="text-sky-400 underline">v2.0.0 Release</a></p>
+        <p>GrainVDB is dual-licensed under MIT and the Commercial Pro License. Built for the sovereign Apple Silicon edge AI ecosystem.</p>
+        <p>© 2026 GrainVDB Contributors · <a href="#pricing" class="text-sky-400 underline">Pricing</a> · <a href="https://github.com/21e8-miner/grain-vdb" class="text-sky-400 underline">GitHub Repository</a> · <a href="https://github.com/21e8-miner/grain-vdb/releases/tag/v2.0.0" class="text-sky-400 underline">v2.0.0 Release</a></p>
     </footer>
+
+    <script>
+        function openLicenseModal(planName, price) {
+            document.getElementById('modalPlanBadge').innerText = `${planName} · ${price}`;
+            document.getElementById('licenseModal').classList.remove('hidden');
+            document.getElementById('licenseModal').classList.add('flex');
+        }
+
+        function closeLicenseModal() {
+            document.getElementById('licenseModal').classList.add('hidden');
+            document.getElementById('licenseModal').classList.remove('flex');
+        }
+
+        function submitLicenseLead(e) {
+            e.preventDefault();
+            const email = document.getElementById('leadEmail').value;
+            const company = document.getElementById('leadCompany').value;
+            const plan = document.getElementById('modalPlanBadge').innerText;
+            
+            // In a production setup, this POSTs to Stripe/LemonSqueezy or your webhook
+            alert(`Thank you! A checkout link and activation packet for ${plan} has been sent to ${email}.`);
+            closeLicenseModal();
+        }
+    </script>
 
     <!-- In-Browser Vector Engine Simulation Data -->
     <script>
