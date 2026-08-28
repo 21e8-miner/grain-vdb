@@ -25,6 +25,7 @@ setup(
     entry_points={
         "console_scripts": [
             "grainvdb = grainvdb.cli:main",
+            "agent-memory = grainvdb.cli:agent_memory_main",
         ],
     },
 )

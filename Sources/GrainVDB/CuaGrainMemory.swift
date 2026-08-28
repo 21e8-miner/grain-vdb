@@ -4,21 +4,36 @@ public struct AgentMemoryEvent: Codable, Sendable {
     public let cuaSequence: Int
     public let semanticText: String
     public let timestamp: Date
+    public let app: String?
+    public let action: String?
+    public let cryptographicHash: String?
 
-    public init(cuaSequence: Int, semanticText: String, timestamp: Date) {
+    public init(
+        cuaSequence: Int, 
+        semanticText: String, 
+        timestamp: Date = Date(),
+        app: String? = nil,
+        action: String? = nil,
+        cryptographicHash: String? = nil
+    ) {
         self.cuaSequence = cuaSequence
         self.semanticText = semanticText
         self.timestamp = timestamp
+        self.app = app
+        self.action = action
+        self.cryptographicHash = cryptographicHash
     }
 }
 
 public class CuaGrainMemorySwift {
     private var db: GrainVDB?
     private var cuaBinaryPath: String = "/usr/local/bin/cua-driver"
+    private var auditCache: [Int: [String: Any]] = [:]
+    private let cacheLock = NSLock()
 
     public init() {}
 
-    /// Set custom path to cua-driver binary (useful for mocking / custom installs)
+    /// Set custom path to cua-driver binary (useful for custom or test environments)
     public func setCuaBinaryPath(_ path: String) {
         self.cuaBinaryPath = path
     }
@@ -34,15 +49,28 @@ public class CuaGrainMemorySwift {
         }
     }
 
-    /// Stores agent state alongside the Cua sequence ID
-    public func recordState(cuaSeq: Int, text: String, embedding: [Float]) {
+    /// Stores agent state alongside the Cua sequence ID and application metadata
+    public func recordState(
+        cuaSeq: Int, 
+        text: String, 
+        embedding: [Float],
+        app: String? = nil,
+        action: String? = nil,
+        cryptographicHash: String? = nil
+    ) {
         guard let db = db else { return }
         
-        let event = AgentMemoryEvent(cuaSequence: cuaSeq, semanticText: text, timestamp: Date())
+        let event = AgentMemoryEvent(
+            cuaSequence: cuaSeq, 
+            semanticText: text, 
+            timestamp: Date(),
+            app: app,
+            action: action,
+            cryptographicHash: cryptographicHash
+        )
         
         do {
             let encoder = JSONEncoder()
-            // Format dates as ISO8601 for interoperability
             if #available(macOS 10.12, iOS 10.0, *) {
                 encoder.dateEncodingStrategy = .iso8601
             }
@@ -51,16 +79,25 @@ public class CuaGrainMemorySwift {
                 try db.addVectors([embedding], ids: nil, metadata: [dict])
             }
         } catch {
-            print("Failed to write to vector store: \(error)")
+            print("[CuaGrainMemorySwift] Failed to write to vector store: \(error)")
         }
     }
 
-    /// Instantly finds past visual states based on a current query
-    public func semanticRecall(queryEmbedding: [Float], k: Int = 3) -> [AgentMemoryEvent]? {
+    /// Instantly finds past visual states based on a query vector and optional app filter
+    public func semanticRecall(
+        queryEmbedding: [Float], 
+        k: Int = 3,
+        appFilter: String? = nil
+    ) -> [AgentMemoryEvent]? {
         guard let db = db else { return nil }
         
         do {
-            let results = try db.search(query: queryEmbedding, k: k)
+            let filterBlock: ((UInt64, [String: Any]?) -> Bool)? = appFilter != nil ? { (_, meta) in
+                guard let meta = meta, let app = meta["app"] as? String else { return false }
+                return app == appFilter
+            } : nil
+            
+            let results = try db.search(query: queryEmbedding, k: k, filter: filterBlock)
             let decoder = JSONDecoder()
             if #available(macOS 10.12, iOS 10.0, *) {
                 decoder.dateDecodingStrategy = .iso8601
@@ -71,18 +108,25 @@ public class CuaGrainMemorySwift {
                     let data = try JSONSerialization.data(withJSONObject: metaDict, options: [])
                     return try decoder.decode(AgentMemoryEvent.self, from: data)
                 } catch {
-                    print("Failed to decode AgentMemoryEvent: \(error)")
+                    print("[CuaGrainMemorySwift] Failed to decode AgentMemoryEvent: \(error)")
                     return nil
                 }
             }
         } catch {
-            print("Vector search failed: \(error)")
+            print("[CuaGrainMemorySwift] Vector search failed: \(error)")
             return nil
         }
     }
 
-    /// Shells out to Cua Driver to verify the cryptographically secured action log
+    /// Shells out to Cua Driver to verify the cryptographically secured action log with in-memory caching
     public func secureAudit(cuaSequence: Int) async throws -> [String: Any]? {
+        cacheLock.lock()
+        if let cached = auditCache[cuaSequence] {
+            cacheLock.unlock()
+            return cached
+        }
+        cacheLock.unlock()
+
         let task = Process()
         task.executableURL = URL(fileURLWithPath: cuaBinaryPath)
         task.arguments = ["history", "show", "\(cuaSequence)", "--json"]
@@ -97,15 +141,15 @@ public class CuaGrainMemorySwift {
             
             if task.terminationStatus == 0 {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
-                return try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            } else {
-                let errData = pipe.fileHandleForReading.readDataToEndOfFile()
-                if let errMsg = String(data: errData, encoding: .utf8) {
-                    print("Cua process failed with error: \(errMsg)")
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    cacheLock.lock()
+                    auditCache[cuaSequence] = json
+                    cacheLock.unlock()
+                    return json
                 }
             }
         } catch {
-            print("Failed to execute Cua audit process: \(error)")
+            print("[CuaGrainMemorySwift] Failed to execute Cua audit process: \(error)")
         }
         return nil
     }

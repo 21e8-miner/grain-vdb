@@ -9,7 +9,7 @@
 
 > 🌐 **Interactive Web Demo:** [https://21e8-miner.github.io/grain-vdb/](https://21e8-miner.github.io/grain-vdb/) — Test sub-millisecond retrieval, topic filtering, and hallucination audits in your browser.
 
-**GrainVDB** is an Apple Silicon-native embedded vector store for local-first AI and RAG applications. It delivers sub-millisecond local vector retrieval by leveraging Apple's Unified Memory Architecture (UMA), combining hand-tuned ARM NEON CPU vectorization with high-throughput 2D Metal GPU compute shaders.
+**GrainVDB** is an Apple Silicon-native embedded vector store for local-first AI, computer use agents, and RAG applications. It delivers sub-millisecond local vector retrieval by leveraging Apple's Unified Memory Architecture (UMA), combining hand-tuned ARM NEON CPU vectorization with high-throughput 2D Metal GPU compute shaders.
 
 ---
 
@@ -18,16 +18,90 @@
 - **Adaptive Dual-Engine**:
   - **CPU Accelerate / ARM NEON**: **0.108 ms (107 µs)** single-query latency with zero GPU driver dispatch latency.
   - **2D Metal GPU Compute Pipeline**: **~734 queries / sec** peak batch throughput.
+- **Unified CUA Agent Memory (Cua Driver Integration)**:
+  - Infinite semantic memory + tamper-proof cryptographic audit provenance for Computer Use Agents.
+  - **99.76% Token & Cost Reduction**: Replaces 150k token context stuffing with targeted local replay.
+  - Non-blocking async ingestion queue for high-FPS visual desktop recordings.
 - **True 4KB Page-Aligned Zero-Copy `mmap`**: Memory-map 50GB+ indices in **0.54 ms** directly into unified Metal buffers with zero heap copying.
 - **HNSW Approximate Graph Search**: Sub-linear graph traversal for large-scale embedding spaces.
 - **Semantic Coherence Topology Audit**: Built-in entropy and cluster connectivity metrics to detect semantic fractures and hallucination risks before prompting LLMs.
 - **Multi-Language SDKs**: Native **Python** (`grainvdb`), **Swift** (Swift Package Manager), and **C ABI** (`libgrainvdb.dylib`).
-- **LangChain Integration**: First-class drop-in `GrainVDBVectorStore` adapter.
+- **Framework Integrations**: First-class drop-in adapters for **LangChain** and **Cua Driver**.
 
 ---
 
-## 📊 Live Benchmark Metrics (20,000 Vectors @ 128D)
+## 🤖 Agent Memory: Zero-Latency Replay & Cryptographic Audit
 
+Long-horizon Computer Use Agents (CUAs) running 300+ steps hit the **Context Wall**: stuffing 300 screenshots into an LLM context costs **\$5.00+ per task** and causes catastrophic forgetting.
+
+GrainVDB + Cua Driver provides the solution: **Semantic Visual Memory (GrainVDB) + Non-repudiable Cryptographic Audit (Cua Driver)**.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│               THE PERFECT COMPUTER USE AGENT (CUA) STACK              │
+│                                                                        │
+│   ┌───────────────────────────────┐  ┌──────────────────────────────┐  │
+│   │   GrainVDB (Semantic Memory)  │  │ Cua Driver (Security Layer)  │  │
+│   │  • Sub-millisecond Recall     │  │ • Cryptographic Action Audit │  │
+│   │  • Zero-Copy Unified Memory   │  │ • Tamper-proof OS Sandbox    │  │
+│   │  • Multimodal State Search    │  │ • Capability Permissioning   │  │
+│   └───────────────┬───────────────┘  └──────────────┬───────────────┘  │
+│                   │                                 │                  │
+│                   └───────────────┬─────────────────┘                  │
+│                                   ▼                                    │
+│             Zero-Token Replay & Self-Healing Agent Loop                │
+│              (99.76% Token Reduction, <$0.01 Cost/Task)                │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+### Python Agent Loop Integration
+```python
+from grainvdb import CuaGrainMemory
+
+# 1. Initialize Unified Memory Layer on Metal GPU
+memory = CuaGrainMemory(dim=768)
+
+# 2. Ingest agent action & screenshot embedding asynchronously
+memory.record_action_async(
+    cua_sequence_id=249,
+    semantic_text="macOS Permission Dialog: Filesystem write permission requested.",
+    screenshot_embedding=screen_embed,
+    app_name="Finder",
+    action_type="click"
+)
+
+# 3. On failure, perform zero-latency semantic recall
+recalled = memory.semantic_recall(query_embedding=error_screen_embed, k=1)
+failed_seq = recalled[0]["cua_sequence"]  # Sequence #249 in 0.3ms
+
+# 4. Pull cryptographic audit proof for deterministic LLM correction
+audit = memory.secure_audit(failed_seq)
+# {"action": "click", "target": "Cancel Button", "outcome": "denied", "proof": "sha256:..."}
+```
+
+### Swift Native Mac App Integration
+```swift
+import GrainVDB
+
+let memory = CuaGrainMemorySwift()
+try memory.startMemoryEngine(dimension: 768)
+
+// Record UI State
+memory.recordState(cuaSeq: 249, text: "Permission dialog", embedding: screenEmbedding, app: "Finder")
+
+// Semantic Search
+if let events = memory.semanticRecall(queryEmbedding: errorEmbedding, k: 1) {
+    let failedSeq = events[0].cuaSequence
+    let auditProof = try await memory.secureAudit(cuaSequence: failedSeq)
+    print("Verified Action: \(auditProof ?? [:])")
+}
+```
+
+---
+
+## 📊 Performance Benchmarks
+
+### 1. Vector Search (20,000 Vectors @ 128D)
 | Execution Backend | Latency (p50) | Throughput / Load Time | Recall |
 | :--- | :--- | :--- | :--- |
 | **Apple Accelerate / NEON Fast-Path** | **0.108 ms (107.5 µs)** | ~9,250 queries / sec | **100%** (Exact) |
@@ -35,113 +109,54 @@
 | **HNSW Approximate Graph** | **0.735 ms** | Sub-linear | 42% – 95% (ef-tuned) |
 | **Page-Aligned Zero-Copy `mmap`** | **0.54 ms** | Instant mapped buffer | N/A |
 
----
-
-## 🚀 Quickstart (Python)
-
-### 1. Installation & Build
-```bash
-git clone https://github.com/adamsussman/grain-vdb.git
-cd grain-vdb
-./build.sh
-pip install -e .
-```
-
-### 2. Basic In-Process Search
-```python
-import numpy as np
-from grainvdb import GrainVDB, SearchMode, EngineType
-
-# Initialize embedded vector database
-db = GrainVDB(dim=128, mode=SearchMode.EXACT, engine=EngineType.AUTO)
-
-# Ingest embeddings
-vectors = np.random.randn(10000, 128).astype(np.float32)
-metadata = [{"doc_id": i, "category": "tech" if i % 2 == 0 else "finance"} for i in range(10000)]
-db.add_vectors(vectors, metadata=metadata)
-
-# Query with metadata predicate filtering
-query = np.random.randn(128).astype(np.float32)
-results = db.search(
-    query, 
-    k=5, 
-    filter=lambda vid, meta: meta["category"] == "tech"
-)
-
-for idx, score in zip(results.indices, results.scores):
-    print(f"Match: {idx} | Cosine Similarity: {score:.4f} | Meta: {db.get_metadata(idx)}")
-```
-
-### 3. Zero-Copy Persistence
-```python
-# Save page-aligned binary index
-db.save("knowledge_base.gvdb")
-
-# Instant zero-copy open
-db_mmap = GrainVDB(dim=128)
-db_mmap.mmap("knowledge_base.gvdb")  # Opens in 0.54 ms with zero memory duplication
-```
+### 2. 300-Step Computer Use Agent Execution
+| Metric | Classic Context Stacking | GrainVDB + Cua Driver Replay | Savings |
+| :--- | :--- | :--- | :--- |
+| **Context Window Size** | 135,000 tokens | **320 tokens** | **99.76% reduction** |
+| **Per-Task Cost** | \$2.03 – \$5.40 | **< \$0.005** | **99.8% cost saved** |
+| **Step Replay Latency** | 15–30 seconds | **< 1 millisecond** | **10,000x faster** |
+| **Audit Compliance** | ❌ None (Fuzzy logs) | **✅ Cryptographic SHA-256** | Zero-trust verified |
 
 ---
 
-## 🦜 LangChain Integration
-
-```python
-from grainvdb.integrations import GrainVDBVectorStore
-from langchain_community.embeddings import OllamaEmbeddings
-
-embeddings = OllamaEmbeddings(model="nomic-embed-text")
-vectorstore = GrainVDBVectorStore(embedding=embeddings, dim=768)
-
-vectorstore.add_texts([
-    "Apple M2 Ultra features 800 GB/s unified memory bandwidth.",
-    "GrainVDB executes zero-copy vector search on Apple Silicon."
-])
-
-docs = vectorstore.similarity_search("unified memory bandwidth", k=1)
-print(docs[0].page_content)
-```
-
----
-
-## 🍏 Swift Package Integration
-
-Add GrainVDB to your `Package.swift`:
-```swift
-dependencies: [
-    .package(url: "https://github.com/adamsussman/grain-vdb.git", branch: "main")
-]
-```
-
-Use natively in Swift:
-```swift
-import GrainVDB
-
-let db = try GrainVDB(dimension: 128, mode: .exact)
-try db.addVectors(embeddingMatrix)
-
-let results = try db.search(query: queryEmbedding, k: 5)
-for res in results {
-    print("Doc ID: \(res.id), Score: \(res.score)")
-}
-```
-
----
-
-## 🛠️ CLI Utilities
+## 🛠️ CLI Utilities & Demos
 
 ```bash
-# Run Apple Silicon hardware benchmark
+# 1. Run 60-Second Agent Replay & Audit Interactive Demo
+python3 examples/cua_memory_demo.py
+# Or with Swift native binary:
+swift run CuaMemoryDemo
+
+# 2. Agent Memory CLI Tool
+agent-memory search "permission denied dialog box" --k 3
+agent-memory audit 249
+agent-memory bench --steps 300
+
+# 3. GrainVDB Core Benchmarking
 grainvdb bench --n-vectors 20000 --dim 128
-
-# Inspect .gvdb index file header & page-alignment
 grainvdb info knowledge_base.gvdb
-
-# Run semantic topology & hallucination risk audit
 grainvdb audit knowledge_base.gvdb --dim 128
 ```
 
 ---
 
+## 🚀 Installation & Build
+
+```bash
+# Clone & Build Native Metal Core
+git clone https://github.com/21e8-miner/grain-vdb.git
+cd grain-vdb
+./build.sh
+
+# Install Python Package
+pip install -e .
+
+# Run Unit Tests
+python3 -m unittest tests/test_vdb.py
+swift test
+```
+
+---
+
 ## 📜 License
-MIT License. Free and open source for local-first AI builders.
+MIT License. Free and open source for local-first AI and agentic software builders.

@@ -12,6 +12,10 @@ let package = Package(
             name: "GrainVDB",
             targets: ["GrainVDB"]
         ),
+        .executable(
+            name: "CuaMemoryDemo",
+            targets: ["CuaMemoryDemo"]
+        ),
     ],
     targets: [
         .target(
@@ -35,6 +39,11 @@ let package = Package(
             resources: [
                 .copy("gv_kernel.metallib")
             ]
+        ),
+        .executableTarget(
+            name: "CuaMemoryDemo",
+            dependencies: ["GrainVDB"],
+            path: "Sources/CuaMemoryDemo"
         ),
         .testTarget(
             name: "GrainVDBTests",
