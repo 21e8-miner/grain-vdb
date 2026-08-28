@@ -626,32 +626,40 @@ static gv2_search_result_t **batch_search_exact(gv2_context_t *ctx,
     gv2_search_result_t **results = new gv2_search_result_t *[num_queries];
 
     for (uint32_t q = 0; q < num_queries; q++) {
+      uint32_t actual_k = std::min(k, n);
       results[q] = new gv2_search_result_t();
-      results[q]->indices = new uint64_t[k];
-      results[q]->scores = new float[k];
-      results[q]->num_results = k;
+      results[q]->indices = new uint64_t[actual_k];
+      results[q]->scores = new float[actual_k];
+      results[q]->num_results = actual_k;
 
       float *scores = &all_scores[q * n];
 
       if (ctx->config.use_gpu_topk && k <= 1024 && n >= 128) {
         // Use GPU-accelerated Top-K
-        gpu_bitonic_topk(ctx, scores, n, k, results[q]->indices,
+        gpu_bitonic_topk(ctx, scores, n, actual_k, results[q]->indices,
                          results[q]->scores);
+        // Map raw indices to vector_ids
+        for (uint32_t i = 0; i < actual_k; i++) {
+          if (results[q]->indices[i] < n) {
+            results[q]->indices[i] = ctx->vector_ids[results[q]->indices[i]];
+          }
+        }
       } else {
-        // Use CPU priority queue
+        // Use CPU priority queue with true vector IDs
         typedef std::pair<float, uint64_t> ScIdx;
         std::priority_queue<ScIdx, std::vector<ScIdx>, std::greater<ScIdx>> pq;
 
         for (uint64_t i = 0; i < n; i++) {
-          if (pq.size() < k) {
-            pq.push({scores[i], i});
+          if (pq.size() < actual_k) {
+            pq.push({scores[i], ctx->vector_ids[i]});
           } else if (scores[i] > pq.top().first) {
             pq.pop();
-            pq.push({scores[i], i});
+            pq.push({scores[i], ctx->vector_ids[i]});
           }
         }
 
-        for (int i = (int)k - 1; i >= 0; i--) {
+        uint32_t count_k = (uint32_t)pq.size();
+        for (int i = (int)count_k - 1; i >= 0; i--) {
           results[q]->scores[i] = pq.top().first;
           results[q]->indices[i] = pq.top().second;
           pq.pop();

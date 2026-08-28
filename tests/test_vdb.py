@@ -307,6 +307,32 @@ class TestGrainVDB(unittest.TestCase):
         self.assertEqual(res.metadata[0]["title"], "Apple Silicon Doc")
         self.assertEqual(res.metadata[0]["category"], "Hardware")
 
+    def test_batch_search_k_greater_than_n(self):
+        """QC: Test batch search when requested k exceeds total vectors in index."""
+        vdb = GrainVDB(dim=self.dim, mode=SearchMode.EXACT)
+        vdb.add_vectors(self.vectors[:3]) # Only 3 vectors
+        self.assertEqual(vdb.vector_count, 3)
+
+        # Request k=10
+        queries = self.vectors[:2]
+        results = vdb.search_batch(queries, k=10)
+        self.assertEqual(len(results), 2)
+        for res in results:
+            self.assertEqual(len(res.indices), 3) # Clamped to 3
+            self.assertEqual(res.num_results, 3)
+
+    def test_custom_explicit_ids_preserved_in_batch(self):
+        """QC: Test explicit non-sequential custom IDs (e.g. sequence #249, #999) in batch."""
+        vdb = GrainVDB(dim=self.dim, mode=SearchMode.EXACT)
+        custom_ids = np.array([249, 777, 999], dtype=np.uint64)
+        vdb.add_vectors(self.vectors[:3], ids=custom_ids)
+
+        queries = np.array([self.vectors[0], self.vectors[2]])
+        results = vdb.search_batch(queries, k=2)
+        
+        self.assertEqual(results[0].indices[0], 249)
+        self.assertEqual(results[1].indices[0], 999)
+
 
 if __name__ == "__main__":
     unittest.main()

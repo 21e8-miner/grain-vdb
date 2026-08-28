@@ -842,10 +842,11 @@ class GrainVDB:
                 try:
                     import json
                     meta_path = Path(path).with_suffix(Path(path).suffix + ".meta")
-                    # Convert keys to string for JSON serialization
+                    tmp_meta_path = Path(path).with_suffix(Path(path).suffix + ".meta.tmp")
                     meta_to_save = {str(k): v for k, v in self._metadata.items()}
-                    with open(meta_path, "w") as f:
+                    with open(tmp_meta_path, "w") as f:
                         json.dump(meta_to_save, f, indent=2)
+                    tmp_meta_path.replace(meta_path)
                 except Exception as e:
                     warnings.warn(f"Failed to save metadata sidecar: {e}")
             return success
