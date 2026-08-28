@@ -10,6 +10,16 @@ from .engine import (
     AuditResult,
     Metrics,
 )
+from .embeddings import (
+    BaseEmbeddingProvider,
+    FastLocalEmbedding,
+    OllamaEmbedding,
+    get_embedding_provider,
+)
+from .ingest import (
+    DocumentChunker,
+    LocalIngestPipeline,
+)
 
 __version__ = "2.0.0"
 __all__ = [
@@ -23,5 +33,10 @@ __all__ = [
     "SearchResult",
     "AuditResult",
     "Metrics",
+    "BaseEmbeddingProvider",
+    "FastLocalEmbedding",
+    "OllamaEmbedding",
+    "get_embedding_provider",
+    "DocumentChunker",
+    "LocalIngestPipeline",
 ]
-

@@ -256,5 +256,46 @@ class TestGrainVDB(unittest.TestCase):
         self.assertGreaterEqual(len(res.indices), 1)
 
 
+    def test_embeddings_provider(self):
+        """Test FastLocalEmbedding deterministic projection."""
+        from grainvdb.embeddings import FastLocalEmbedding, get_embedding_provider
+
+        embedder = get_embedding_provider("fast", dimension=self.dim)
+        v1 = embedder.embed_query("Apple Silicon M2 Ultra GPU")
+        v2 = embedder.embed_query("Apple Silicon M2 Ultra GPU")
+        v3 = embedder.embed_query("Different topic entirely")
+
+        self.assertEqual(len(v1), self.dim)
+        # Deterministic check
+        np.testing.assert_allclose(v1, v2, rtol=1e-5)
+        # Similarity check
+        sim_same = float(np.dot(v1, v2))
+        sim_diff = float(np.dot(v1, v3))
+        self.assertAlmostEqual(sim_same, 1.0, places=4)
+        self.assertLess(sim_diff, 0.99)
+
+    def test_document_ingest_pipeline(self):
+        """Test local document chunking and batch ingestion."""
+        from grainvdb.ingest import DocumentChunker, LocalIngestPipeline
+
+        chunker = DocumentChunker(chunk_size=100, chunk_overlap=20)
+        sample_text = "Apple Silicon unified memory enables CPU and Metal GPU to access identical tensors without PCIe latency. " * 5
+        chunks = chunker.split_text(sample_text)
+        self.assertGreater(len(chunks), 1)
+
+        vdb = GrainVDB(dim=self.dim, mode=SearchMode.EXACT)
+        pipeline = LocalIngestPipeline(vdb=vdb, chunk_size=100, chunk_overlap=20)
+        n_chunks = pipeline.ingest_text(sample_text, title="Apple Silicon Doc", category="Hardware")
+
+        self.assertEqual(n_chunks, len(chunks))
+        self.assertEqual(vdb.vector_count, len(chunks))
+
+        # Query ingested chunks
+        res = vdb.search(pipeline.embedder.embed_query("Apple Silicon unified memory"), k=2)
+        self.assertEqual(len(res.indices), 2)
+        self.assertEqual(res.metadata[0]["title"], "Apple Silicon Doc")
+        self.assertEqual(res.metadata[0]["category"], "Hardware")
+
+
 if __name__ == "__main__":
     unittest.main()

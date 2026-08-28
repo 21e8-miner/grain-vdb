@@ -554,9 +554,15 @@ class GrainVDB:
 
     @property
     def vector_count(self) -> int:
-        """Get the number of stored vectors."""
-        with self._lock:
-            return self._lib.gv2_vector_count(self._ctx)
+        """Get current number of vectors in index."""
+        if not self._ctx:
+            return 0
+        return self._lib.gv2_vector_count(self._ctx)
+
+    @property
+    def dimension(self) -> int:
+        """Get vector dimension."""
+        return self.dim
 
     @property
     def hnsw_stats(self) -> Optional[HNSWStats]:
