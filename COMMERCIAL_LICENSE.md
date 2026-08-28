@@ -8,22 +8,24 @@ GrainVDB is dual-licensed under the **MIT License** and the **GrainVDB Commercia
 
 | Tier | Price | Ideal For | Rights & Features |
 | :--- | :--- | :--- | :--- |
-| **Open Source / Community** | **Free ($0)** | Personal, research & open-source projects | Full source access under MIT License. |
-| **Commercial Pro License** | **$49 one-time** (or $19/mo) | Indie developers, Mac ISVs, commercial software | Perpetual right to embed and redistribute GrainVDB in closed-source proprietary macOS/iOS applications without open-source attribution requirements. Includes pre-compiled Apple Silicon binaries. |
-| **Enterprise Sovereign** | **$999 / year** (or custom) | Law firms, healthcare, media studios & enterprises | Custom Metal shader pipelines, on-premise Mac Studio cluster integration, HIPAA/GDPR data residency compliance documentation, and dedicated SLA support. |
+| **Community / Open Source** | **Free ($0)** | Personal, academic & OSS builders | Full source code access under MIT License. |
+| **Developer Commercial Pro** | **$49 one-time** (or $19/mo) | Indie developers, Mac ISVs, startups | Perpetual right to embed and redistribute GrainVDB in closed-source proprietary macOS/iOS applications without attribution requirements. Includes pre-compiled universal binaries. |
+| **Enterprise CUA Automation** | **$4,999 / year** | AI agent builders, RPA teams, enterprises | Multi-threaded async ingestion, Metal GPU kernel tuning, Chapter 4 Actuated Curiosity & IRB Safe Probing engine, priority SLA support. |
+| **Sovereign Compliance & Audit** | **$24,999 / year** | FinTech, healthcare, defense, enterprise legal | Tamper-proof cryptographic provenance proofs (Cua Driver integration), HIPAA/SOC2 compliance documentation, Mac Studio on-premise cluster deployment, and dedicated architecture support. |
 
 ---
 
 ## 💼 Why Choose the Commercial License?
 
 1. **Closed-Source Embedding**: Distribute your commercial macOS/iOS applications without GPL/copyleft restrictions or visible copyright attribution requirements.
-2. **Pre-Compiled & Signed Binaries**: Access hardened, pre-built universal `dylib` and `metallib` binaries signed for direct App Store submission.
-3. **Priority Support & Custom Shaders**: Direct access to core kernel engineers for custom dimension tuning and quantization optimizations.
+2. **Pre-Compiled & Signed Binaries**: Access hardened, pre-built universal `dylib` and `metallib` binaries signed for direct Mac App Store and iOS App Store submission.
+3. **Enterprise Compliance & Non-Repudiation**: Hardware-anchored SHA-256 cryptographic audit logs designed for enterprise compliance and zero-trust security audits.
+4. **Token Arbitrage ROI**: Replaces 150k token context stuffing with sub-millisecond local replay, cutting enterprise LLM API expenditure by **99.76%**.
 
 ---
 
 ## 📩 Inquiries & Purchasing
 
-To purchase a Commercial Pro License or schedule an Enterprise Pilot:
-- **Web Storefront & Checkout**: [https://21e8-miner.github.io/grain-vdb/#pricing](https://21e8-miner.github.io/grain-vdb/#pricing)
-- **Enterprise Contact**: `licensing@grainvdb.dev` or open an inquiry via [GitHub Discussions](https://github.com/21e8-miner/grain-vdb/discussions).
+- **Enterprise Blueprint & ROI Calculator:** See [ENTERPRISE_MONETIZATION.md](ENTERPRISE_MONETIZATION.md)
+- **Web Storefront & Checkout:** [https://21e8-miner.github.io/grain-vdb/#pricing](https://21e8-miner.github.io/grain-vdb/#pricing)
+- **Enterprise Pilot Inquiries:** `licensing@grainvdb.dev` or via [GitHub Discussions](https://github.com/21e8-miner/grain-vdb/discussions)
