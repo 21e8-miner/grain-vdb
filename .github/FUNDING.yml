@@ -1,0 +1,7 @@
+# GitHub Funding & Sponsorship Configuration for GrainVDB
+github: [21e8-miner, adamsussman]
+custom: ["https://polar.sh/grainvdb", "https://buy.stripe.com/grainvdb"]
+polar: grainvdb
+issuehunt: grain-vdb
+community_bridge: grain-vdb
+ko_fi: grainvdb

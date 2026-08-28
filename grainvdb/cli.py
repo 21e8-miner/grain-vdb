@@ -134,6 +134,9 @@ def agent_memory_main() -> int:
     # dvr
     dvr_parser = subparsers.add_parser("dvr", help="Launch interactive Agent DVR Visual Replay Studio in browser")
 
+    # license
+    license_parser = subparsers.add_parser("license", help="View commercial licensing options and checkout rails")
+
     args = parser.parse_args()
 
     if args.subcommand == "search":
@@ -209,6 +212,24 @@ def agent_memory_main() -> int:
         webbrowser.open(f"file://{dvr_path}")
         return 0
 
+    elif args.subcommand == "license":
+        print("=" * 70)
+        print("  GrainVDB & Cua Driver: Commercial Licensing & Enterprise Support")
+        print("=" * 70)
+        print("  Licensing Tiers:")
+        print("    • Community Edition:      Free ($0) under MIT License")
+        print("    • Developer Commercial:   $49 one-time (or $19/mo)")
+        print("                              [Polar Checkout]:  https://polar.sh/grainvdb")
+        print("                              [Stripe Checkout]: https://buy.stripe.com/grainvdb")
+        print("    • Enterprise Automation:  $4,999 / year (Async Metal GPU, Chapters 4/5)")
+        print("    • Sovereign Compliance:   $24,999 / year (FINRA/HIPAA Audit Certification)")
+        print("\n  Enterprise Inquiries & Pilots:")
+        print("    • Email:   licensing@grainvdb.dev")
+        print("    • Web:     https://21e8-miner.github.io/grain-vdb/#pricing")
+        print("    • Sponsor: https://github.com/sponsors/21e8-miner")
+        print("=" * 70)
+        return 0
+
     elif args.subcommand == "bench":
         steps = args.steps
         print("=" * 70)
@@ -278,6 +299,9 @@ def main() -> int:
     audit_parser.add_argument("file", type=str, help="Path to .gvdb database file")
     audit_parser.add_argument("--dim", type=int, default=128, help="Vector dimension (default: 128)")
 
+    # license
+    subparsers.add_parser("license", help="View commercial licensing options and checkout rails")
+
     # memory
     memory_parser = subparsers.add_parser("memory", help="Agent Memory CLI subcommands")
     memory_parser.add_argument("args", nargs=argparse.REMAINDER, help="Arguments passed to agent-memory")
@@ -297,6 +321,9 @@ def main() -> int:
         return cmd_info(args)
     elif args.command == "audit":
         return cmd_audit(args)
+    elif args.command == "license":
+        sys.argv = ["agent-memory", "license"]
+        return agent_memory_main()
     elif args.command == "memory":
         sys.argv = ["agent-memory"] + (args.args or [])
         return agent_memory_main()

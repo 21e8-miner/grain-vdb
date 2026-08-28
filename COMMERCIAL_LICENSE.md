@@ -24,8 +24,17 @@ GrainVDB is dual-licensed under the **MIT License** and the **GrainVDB Commercia
 
 ---
 
-## 📩 Inquiries & Purchasing
+## 📩 Inquiries, Self-Serve Checkout & Purchasing
 
-- **Enterprise Blueprint & ROI Calculator:** See [ENTERPRISE_MONETIZATION.md](ENTERPRISE_MONETIZATION.md)
-- **Web Storefront & Checkout:** [https://21e8-miner.github.io/grain-vdb/#pricing](https://21e8-miner.github.io/grain-vdb/#pricing)
-- **Enterprise Pilot Inquiries:** `licensing@grainvdb.dev` or via [GitHub Discussions](https://github.com/21e8-miner/grain-vdb/discussions)
+1. **Self-Serve Developer Pro Checkout ($49 one-time / $19/mo):**
+   - **Polar.sh Storefront (Automated Tax & Delivery):** [https://polar.sh/grainvdb](https://polar.sh/grainvdb)
+   - **Direct Stripe Checkout:** [https://buy.stripe.com/grainvdb](https://buy.stripe.com/grainvdb)
+   *(Upon checkout, your commercial license certificate and pre-compiled Mac binaries are delivered instantly to your email).*
+
+2. **Enterprise Pilots & Custom SLA ($4,999 – $24,999 / year):**
+   - **Enterprise ROI Blueprint & Calculator:** See [ENTERPRISE_MONETIZATION.md](ENTERPRISE_MONETIZATION.md)
+   - **Schedule Discovery Call & Invoicing:** Contact `licensing@grainvdb.dev` or initiate a pilot request on [GitHub Discussions](https://github.com/21e8-miner/grain-vdb/discussions).
+   - Invoicing supported via Stripe Invoicing, Purchase Order (PO), ACH, and Wire Transfer (Net 30).
+
+3. **Open-Source Sponsorship & Community Grants:**
+   - Sponsor via [GitHub Sponsors](https://github.com/sponsors/21e8-miner) to fund ongoing Apple Silicon Metal GPU optimizations.

@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Live Demo](https://img.shields.io/badge/Live%20Demo-GrainVDB%20Studio-38bdf8.svg)](https://21e8-miner.github.io/grain-vdb/)
 [![Agent DVR](https://img.shields.io/badge/Interactive-Agent%20DVR%20Studio-a855f7.svg)](https://21e8-miner.github.io/grain-vdb/agent_dvr.html)
+[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink.svg)](https://github.com/sponsors/21e8-miner)
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS%20%28Apple%20Silicon%29-brightgreen.svg)]()
 [![Metal: v3.0](https://img.shields.io/badge/Metal-v3.0-blue.svg)]()
 [![Swift: SPM](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)]()
@@ -179,10 +180,16 @@ swift test
 
 ---
 
-## 💰 Commercial Licensing & Monetization
-GrainVDB is dual-licensed under the **MIT License** and the **GrainVDB Commercial License**.
-- **Commercial & Enterprise Blueprint:** See [ENTERPRISE_MONETIZATION.md](ENTERPRISE_MONETIZATION.md)
-- **Licensing Tiers:** See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md)
+## 💰 Commercial Licensing & Payment Rails
+GrainVDB is dual-licensed under the **MIT License** (Free for open source) and the **GrainVDB Commercial License** (for proprietary/closed-source embedding and enterprise compliance).
+
+- **Developer Commercial Pro ($49 one-time / $19/mo):**
+  - Instant Checkout via [Polar.sh](https://polar.sh/grainvdb) or [Stripe Checkout](https://buy.stripe.com/grainvdb) *(Immediate delivery of signed binaries & license certificate)*.
+- **Enterprise Pilots ($4,999 – $24,999 / year):**
+  - Inbound Discovery & Pilots: Contact `licensing@grainvdb.dev` or view [ENTERPRISE_MONETIZATION.md](ENTERPRISE_MONETIZATION.md).
+- **Open-Source Sponsorship:**
+  - Support ongoing Metal GPU optimizations via [GitHub Sponsors](https://github.com/sponsors/21e8-miner).
+- **Full Licensing Terms:** See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
 
 ---
 
