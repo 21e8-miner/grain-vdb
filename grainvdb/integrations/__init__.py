@@ -5,5 +5,17 @@ Provides drop-in adapters for LangChain, LlamaIndex, and MLX.
 
 from .langchain import GrainVDBVectorStore
 from .cua import CuaGrainMemory
+from .cua_hands import Level, Outcome, ProbeVerdict, ProbeBudget, classify, ladder_level, ProbingMind, TrustLedger
 
-__all__ = ["GrainVDBVectorStore", "CuaGrainMemory"]
+__all__ = [
+    "GrainVDBVectorStore", 
+    "CuaGrainMemory",
+    "Level",
+    "Outcome",
+    "ProbeVerdict",
+    "ProbeBudget",
+    "classify",
+    "ladder_level",
+    "ProbingMind",
+    "TrustLedger",
+]
