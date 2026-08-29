@@ -7,6 +7,7 @@ from .langchain import GrainVDBVectorStore, CuaReplayTool, CuaAuditTool
 from .cua import CuaGrainMemory
 from .cua_hands import Level, Outcome, ProbeVerdict, ProbeBudget, classify, ladder_level, ProbingMind, TrustLedger
 from .cua_skills import SkillPlaybook, SkillStep, PlaybookProber, PlaybookStatus
+from .cua_merkle import MerkleTrajectoryChain, MerkleNode
 
 __all__ = [
     "GrainVDBVectorStore", 
@@ -25,4 +26,6 @@ __all__ = [
     "SkillStep",
     "PlaybookProber",
     "PlaybookStatus",
+    "MerkleTrajectoryChain",
+    "MerkleNode",
 ]

@@ -13,6 +13,7 @@ from typing import List, Dict, Optional, Any, Union, Callable
 import numpy as np
 
 from ..engine import GrainVDB, SearchMode, EngineType, Quantization, DistanceMetric
+from .cua_merkle import MerkleTrajectoryChain, MerkleNode
 
 
 class CuaGrainMemory:
@@ -50,6 +51,9 @@ class CuaGrainMemory:
         )
         self.audit_cache_size = audit_cache_size
         self._audit_cache: Dict[int, Dict[str, Any]] = {}
+        
+        # Cryptographic Merkle-DAG Trajectory Chain
+        self.merkle_chain = MerkleTrajectoryChain()
         
         # Async Ingestion Queue
         self._async_queue: queue.Queue = queue.Queue()
@@ -95,12 +99,23 @@ class CuaGrainMemory:
         extra_metadata: Optional[Dict[str, Any]] = None
     ) -> bool:
         """
-        Records an agent step synchronously into semantic memory.
+        Records an agent step synchronously into semantic memory and appends to the
+        tamper-proof Merkle trajectory chain.
         """
+        # Append to Merkle Trajectory Chain
+        merkle_node = self.merkle_chain.append_step(
+            sequence_id=cua_sequence_id,
+            action_text=semantic_text,
+            screenshot_vector=screenshot_embedding,
+            metadata=extra_metadata
+        )
+
         metadata = {
             "cua_seq": cua_sequence_id,
             "text": semantic_text,
-            "timestamp": time.time(),
+            "timestamp": merkle_node.timestamp,
+            "merkle_hash": merkle_node.node_hash,
+            "parent_merkle_hash": merkle_node.parent_hash,
         }
         if app_name:
             metadata["app"] = app_name
@@ -350,6 +365,74 @@ class CuaGrainMemory:
             screenshot_embedding=embedding,
             app_name=app_name,
             action_type=action_type
+        )
+
+    def get_merkle_proof(self, cua_sequence_id: int) -> Dict[str, Any]:
+        """
+        Retrieves a cryptographic Merkle-DAG inclusion proof for a specific agent step.
+        """
+        return self.merkle_chain.get_merkle_proof(cua_sequence_id)
+
+    def verify_trajectory_chain(self) -> Tuple[bool, Optional[str]]:
+        """
+        Verifies mathematical continuity of the entire action trajectory from Genesis.
+        """
+        return self.merkle_chain.verify_integrity()
+
+    def record_trajectory_window(
+        self,
+        lead_sequence_id: int,
+        steps: List[Dict[str, Any]],
+        decay: float = 0.75,
+        summary_text: Optional[str] = None
+    ) -> bool:
+        """
+        Temporal Trajectory Slicing: Fuses multi-step temporal action sub-trajectories
+        into a decayed temporal context vector for composite workflow recovery.
+        
+        Args:
+            lead_sequence_id: Terminal sequence ID of the sub-trajectory
+            steps: List of dicts with {"embedding": List[float], "action": str}
+            decay: Exponential decay factor for earlier steps (0.0 to 1.0)
+            summary_text: Optional text description of the sub-trajectory
+        """
+        if not steps:
+            return False
+
+        # Compute decayed fused vector: v = v_t + decay * v_{t-1} + decay^2 * v_{t-2} ...
+        fused = np.zeros(self.dim, dtype=np.float32)
+        weight_sum = 0.0
+        actions = []
+        for i, step in enumerate(reversed(steps)):
+            w = decay ** i
+            vec = np.asarray(step.get("embedding", [0.0] * self.dim), dtype=np.float32).flatten()
+            norm = np.linalg.norm(vec)
+            if norm > 1e-7:
+                vec = vec / norm
+            fused += w * vec
+            weight_sum += w
+            actions.append(step.get("action", ""))
+
+        if weight_sum > 0:
+            fused /= weight_sum
+            fnorm = np.linalg.norm(fused)
+            if fnorm > 1e-7:
+                fused /= fnorm
+
+        actions.reverse()
+        composite_action = " -> ".join(actions)
+        text = summary_text or f"Trajectory Window [{len(steps)} steps]: {composite_action}"
+
+        return self.record_action(
+            cua_sequence_id=lead_sequence_id,
+            semantic_text=text,
+            screenshot_embedding=fused,
+            action_type="trajectory_window",
+            extra_metadata={
+                "is_trajectory_window": True,
+                "window_size": len(steps),
+                "steps_summary": composite_action
+            }
         )
 
     def batch_secure_audit(self, cua_sequence_ids: List[int]) -> Dict[int, Optional[Dict[str, Any]]]:
