@@ -9,7 +9,7 @@ import json
 import time
 import threading
 import queue
-from typing import List, Dict, Optional, Any, Union, Callable
+from typing import List, Dict, Optional, Any, Union, Callable, Tuple
 import numpy as np
 
 from ..engine import GrainVDB, SearchMode, EngineType, Quantization, DistanceMetric
@@ -168,6 +168,8 @@ class CuaGrainMemory:
         """
         self.flush_async_queue()
         try:
+            if self.db.vector_count == 0:
+                return []
             vec = np.asarray(query_embedding, dtype=np.float32).reshape(-1)
             
             filter_fn = None
@@ -195,7 +197,7 @@ class CuaGrainMemory:
                         "semantic_context": meta.get("text"),
                         "app": meta.get("app"),
                         "action": meta.get("action"),
-                        "cryptographic_hash": meta.get("hash"),
+                        "cryptographic_hash": meta.get("merkle_hash") or meta.get("hash"),
                     })
             return recalled_events
         except Exception as e:
@@ -476,13 +478,35 @@ class CuaGrainMemory:
         }
 
     def save_checkpoint(self, path: str) -> bool:
-        """Saves current memory index and metadata to disk."""
+        """Saves memory index, metadata, and the Merkle trajectory chain to disk."""
         self.flush_async_queue()
-        return self.db.save(path)
+        ok = self.db.save(path)
+        if ok:
+            try:
+                with open(str(path) + ".chain", "w") as f:
+                    f.write(self.merkle_chain.to_json())
+            except Exception as e:
+                print(f"[CuaGrainMemory Warning] Merkle chain not persisted: {e}")
+        return ok
 
     def load_checkpoint(self, path: str) -> bool:
-        """Loads memory index and metadata from disk."""
-        return self.db.load(path)
+        """Loads memory index, metadata, and the Merkle trajectory chain from disk."""
+        ok = self.db.load(path)
+        if ok:
+            import os
+            chain_path = str(path) + ".chain"
+            if os.path.exists(chain_path):
+                try:
+                    with open(chain_path, "r") as f:
+                        restored = MerkleTrajectoryChain.from_json(f.read())
+                    valid, err = restored.verify_integrity()
+                    if valid:
+                        self.merkle_chain = restored
+                    else:
+                        print(f"[CuaGrainMemory Warning] Persisted Merkle chain failed integrity check ({err}); starting a fresh chain.")
+                except Exception as e:
+                    print(f"[CuaGrainMemory Warning] Merkle chain not restored: {e}")
+        return ok
 
     def close(self):
         """Shuts down background ingestion workers."""

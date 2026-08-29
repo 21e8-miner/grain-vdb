@@ -37,6 +37,14 @@ class FastLocalEmbedding(BaseEmbeddingProvider):
         self.rng = np.random.RandomState(seed)
         self._projection = self.rng.randn(10007, dimension).astype(np.float32)
 
+    @staticmethod
+    def _stable_token_hash(word: str) -> int:
+        """Process-independent token hash. Python's built-in hash() is salted
+        per interpreter run (PYTHONHASHSEED), which would silently break
+        persisted embeddings across restarts."""
+        import hashlib
+        return int.from_bytes(hashlib.sha1(word.encode("utf-8")).digest()[:8], "big")
+
     def embed_query(self, text: str) -> np.ndarray:
         vec = np.zeros(self.dimension, dtype=np.float32)
         words = text.lower().split()
@@ -45,7 +53,7 @@ class FastLocalEmbedding(BaseEmbeddingProvider):
             return vec
 
         for word in words:
-            h = abs(hash(word)) % 10007
+            h = self._stable_token_hash(word) % 10007
             vec += self._projection[h]
         
         norm = np.linalg.norm(vec)

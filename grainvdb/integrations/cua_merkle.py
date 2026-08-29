@@ -1,7 +1,7 @@
 """
 cua_merkle.py — Cryptographic Merkle-DAG Trajectory Chaining & Verifiable Non-Repudiation.
 
-Patent-Pending Architecture:
+Design:
 - Extends individual action hashing to an immutable, append-only Merkle-DAG.
 - Each agent step S_i is cryptographically bound to its parent state:
     Hash(S_i) = SHA256(ParentHash || SeqID || ActionPayload || ScreenVectorHash || Timestamp)
@@ -141,6 +141,35 @@ class MerkleTrajectoryChain:
             expected_parent = node.node_hash
 
         return True, None
+
+    def to_json(self) -> str:
+        """Serialize the full trajectory chain for checkpointing."""
+        return json.dumps({
+            "session_id": self.session_id,
+            "chain": [n.to_dict() for n in self.chain],
+        })
+
+    @classmethod
+    def from_json(cls, payload: str) -> "MerkleTrajectoryChain":
+        """Restore a chain saved with to_json(). Verifies nothing by itself;
+        call verify_integrity() after loading to confirm the restored chain
+        is cryptographically continuous."""
+        data = json.loads(payload)
+        obj = cls(session_id=data.get("session_id"))
+        for nd in data.get("chain", []):
+            node = MerkleNode(
+                sequence_id=int(nd["sequence_id"]),
+                parent_hash=nd["parent_hash"],
+                action_payload=nd["action_payload"],
+                vector_digest=nd["vector_digest"],
+                timestamp=float(nd["timestamp"]),
+                metadata_digest=nd["metadata_digest"],
+                node_hash=nd["node_hash"],
+            )
+            obj.chain.append(node)
+            obj._hash_to_index[node.node_hash] = len(obj.chain) - 1
+            obj._seq_to_index[node.sequence_id] = len(obj.chain) - 1
+        return obj
 
     def get_merkle_proof(self, sequence_id: int) -> Dict[str, Any]:
         """

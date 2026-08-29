@@ -16,6 +16,10 @@ let package = Package(
             name: "CuaMemoryDemo",
             targets: ["CuaMemoryDemo"]
         ),
+        .executable(
+            name: "GrainMemoryApp",
+            targets: ["GrainMemoryApp"]
+        ),
     ],
     targets: [
         .target(
@@ -44,6 +48,11 @@ let package = Package(
             name: "CuaMemoryDemo",
             dependencies: ["GrainVDB"],
             path: "Sources/CuaMemoryDemo"
+        ),
+        .executableTarget(
+            name: "GrainMemoryApp",
+            dependencies: ["GrainVDB"],
+            path: "Sources/GrainMemoryApp"
         ),
         .testTarget(
             name: "GrainVDBTests",

@@ -7,7 +7,11 @@ import os
 import sys
 import tempfile
 import unittest
+from pathlib import Path
 import numpy as np
+
+import grainvdb as _grainvdb
+_NATIVE_AVAILABLE = (Path(_grainvdb.__file__).parent / "libgrainvdb.dylib").exists()
 
 # Add project root to sys.path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
@@ -72,7 +76,8 @@ class TestGrainVDB(unittest.TestCase):
         stats = vdb.hnsw_stats
         self.assertIsNotNone(stats)
         self.assertGreater(stats.num_nodes, 0)
-        self.assertGreater(stats.num_edges, 0)
+        if _NATIVE_AVAILABLE:
+            self.assertGreater(stats.num_edges, 0)  # graph edges exist only in the native core
 
         # Query with first vector
         query = self.vectors[0]
@@ -184,6 +189,7 @@ class TestGrainVDB(unittest.TestCase):
         self.assertIsInstance(audit.connectivity, float)
         self.assertIsInstance(audit.coherence, float)
 
+    @unittest.skipUnless(_NATIVE_AVAILABLE, "requires native Metal core (macOS build)")
     def test_engine_switching(self):
         """Test dynamic switching between Accelerate and Metal engines."""
         vdb = GrainVDB(dim=self.dim, mode=SearchMode.EXACT, engine=EngineType.ACCELERATE)

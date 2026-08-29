@@ -52,6 +52,10 @@ def run_benchmark(
     # 1. Benchmark CPU Accelerate Fast-Path
     print("\n[1/4] Benchmarking Apple Accelerate CPU Fast-Path...")
     vdb_cpu = GrainVDB(dim=dim, mode=SearchMode.EXACT, engine=EngineType.ACCELERATE)
+    actual_engine = vdb_cpu.engine.name
+    if actual_engine == "NUMPY":
+        print("  ⚠ Native Metal core not available — ALL sections below run on the pure "
+              "NumPy reference engine. These numbers measure the fallback, not Apple Silicon.")
     t0 = time.perf_counter()
     vdb_cpu.add_vectors(vectors)
     ingest_time = time.perf_counter() - t0
@@ -156,6 +160,7 @@ def run_benchmark(
             "processor": platform.processor(),
             "python_version": platform.python_version(),
         },
+        "actual_engine": actual_engine,
         "parameters": {
             "n_vectors": n_vectors,
             "dimension": dim,
@@ -199,7 +204,10 @@ def run_benchmark(
     print("=" * 68)
     print("  Benchmark Summary (Reproducible on Apple Silicon)")
     print("=" * 68)
-    print(f"  • CPU Accelerate Single-Query Latency (p50): {cpu_p50:.3f} ms ({cpu_p50*1000:.1f} µs) [100% recall]")
+    label = "NumPy fallback" if actual_engine == "NUMPY" else "CPU Accelerate"
+    print(f"  • {label} Single-Query Latency (p50): {cpu_p50:.3f} ms ({cpu_p50*1000:.1f} µs) [100% recall]")
+    if actual_engine == "NUMPY":
+        print("  • (Metal GPU / HNSW / mmap sections above also ran on the NumPy fallback engine)")
     print(f"  • Metal GPU Single-Query Latency (p50):      {gpu_p50:.3f} ms [100% recall]")
     print(f"  • Metal GPU Peak Batch Throughput:          {peak_qps:,.0f} queries/sec")
     print(f"  • HNSW Approximate Search Latency (p50):    {hnsw_p50:.3f} ms ({mean_recall*100:.1f}% recall)")

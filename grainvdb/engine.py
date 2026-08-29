@@ -193,6 +193,13 @@ class GrainVDB:
         
         self._is_numpy = False
         if self._engine == EngineType.NUMPY or not lib_path.exists() or not metallib.exists():
+            if self._engine != EngineType.NUMPY:
+                warnings.warn(
+                    "GrainVDB native Metal core not found; falling back to the pure "
+                    "NumPy reference engine (correct results, no Apple Silicon "
+                    "acceleration). Run ./build.sh on macOS for native performance.",
+                    RuntimeWarning,
+                )
             self._is_numpy = True
             self._engine = EngineType.NUMPY
             self._np_vectors = np.empty((0, self.dim), dtype=np.float32)
@@ -632,8 +639,13 @@ class GrainVDB:
                 self._is_numpy = True
                 self._engine = EngineType.NUMPY
                 return
-            if self._lib and self._ctx:
-                self._lib.gv2_set_engine(self._ctx, int(value))
+            if self._lib is None or self._ctx is None:
+                raise RuntimeError(
+                    f"Cannot switch to {value.name}: native Metal core is not loaded "
+                    "(NumPy fallback active). Build with ./build.sh on macOS."
+                )
+            self._lib.gv2_set_engine(self._ctx, int(value))
+            self._is_numpy = False
             self._engine = value
 
     @property
@@ -654,6 +666,15 @@ class GrainVDB:
     def hnsw_stats(self) -> Optional[HNSWStats]:
         """Get HNSW index statistics."""
         with self._lock:
+            if self._is_numpy:
+                # Fallback engine keeps no graph; report flat storage stats
+                return HNSWStats(
+                    num_nodes=len(self._np_ids),
+                    num_edges=0,
+                    max_level=0,
+                    avg_degree=0.0,
+                    memory_usage_bytes=int(self._np_vectors.nbytes + self._np_ids.nbytes),
+                )
             stats = self._C_HNSWStats()
             if self._lib.gv2_hnsw_get_stats(self._ctx, ctypes.byref(stats)):
                 return HNSWStats(
@@ -675,6 +696,13 @@ class GrainVDB:
         with self._lock:
             if self.mode == SearchMode.EXACT:
                 warnings.warn("Index build not required for EXACT mode")
+                return self
+            
+            if self._is_numpy:
+                warnings.warn(
+                    "NumPy fallback engine has no HNSW graph; queries run as exact "
+                    "brute-force search (100% recall, O(N))."
+                )
                 return self
             
             success = self._lib.gv2_hnsw_build(self._ctx)
@@ -711,6 +739,15 @@ class GrainVDB:
                     vec = vec / norm
             
             target_id = id if id is not None else self.vector_count
+            
+            if self._is_numpy:
+                ids_arr = np.array([target_id], dtype=np.uint64)
+                self._np_vectors = np.vstack([self._np_vectors, vec.reshape(1, -1)]) if len(self._np_vectors) > 0 else vec.reshape(1, -1).copy()
+                self._np_ids = np.concatenate([self._np_ids, ids_arr]) if len(self._np_ids) > 0 else ids_arr.copy()
+                if metadata is not None:
+                    self._metadata[int(target_id)] = metadata
+                self._vector_count = len(self._np_ids)
+                return int(target_id)
             
             # Add to primary vector storage
             ids_arr = np.array([target_id], dtype=np.uint64)
@@ -769,7 +806,7 @@ class GrainVDB:
             if self._is_numpy:
                 t0 = time.perf_counter()
                 if len(self._np_vectors) == 0:
-                    return SearchResult(indices=np.empty(0, dtype=np.uint64), scores=np.empty(0, dtype=np.float32), latency_ms=0.0, num_results=0)
+                    raise RuntimeError("Search failed: index is empty")
 
                 # Compute scores
                 if self.distance == DistanceMetric.COSINE:
@@ -1005,6 +1042,36 @@ class GrainVDB:
                     num_connections=0,
                 )
             
+            if self._is_numpy:
+                # Mirror native gv2_audit: pairwise cosine, 0.85 connectivity threshold
+                rows = []
+                for vid in result_indices:
+                    m = np.where(self._np_ids == vid)[0]
+                    if len(m) == 0:
+                        continue
+                    rows.append(self._np_vectors[m[0]])
+                if len(rows) < 2:
+                    return AuditResult(connectivity=1.0, coherence=1.0, entropy=0.0, num_connections=0)
+                mat = np.vstack(rows)
+                norms = np.linalg.norm(mat, axis=1, keepdims=True)
+                mat = mat / np.maximum(norms, 1e-12)
+                sims = mat @ mat.T
+                iu = np.triu_indices(len(rows), k=1)
+                pair_sims = np.clip(sims[iu], -1.0, 1.0)
+                threshold = 0.85
+                connected = pair_sims > threshold
+                num_connections = int(connected.sum())
+                connectivity = float(num_connections / len(pair_sims))
+                coherence = float(pair_sims.mean())
+                p = np.clip((pair_sims + 1.0) / 2.0, 1e-7, 1.0 - 1e-7)
+                entropy = float(-(p * np.log2(p) + (1 - p) * np.log2(1 - p)).sum())
+                return AuditResult(
+                    connectivity=connectivity,
+                    coherence=coherence,
+                    entropy=entropy,
+                    num_connections=num_connections,
+                )
+            
             audit = self._lib.gv2_audit(
                 self._ctx,
                 result_indices.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
@@ -1018,6 +1085,33 @@ class GrainVDB:
                 num_connections=audit.num_connections,
             )
     
+    def _numpy_load(self, path: Union[str, Path]) -> bool:
+        """Load a grainvdb-numpy-v1 .npz payload written by the NumPy backend.
+
+        Native-core files are a different binary format and cannot be loaded
+        by the fallback engine (and vice versa)."""
+        try:
+            with open(path, "rb") as f:
+                data = np.load(f, allow_pickle=False)
+                fmt = str(data["format"][0]) if "format" in data else ""
+                if fmt != "grainvdb-numpy-v1":
+                    warnings.warn(
+                        f"File at {path} is not a NumPy-backend index (format={fmt!r}); "
+                        "it may be a native Metal-core index, which the fallback engine cannot read."
+                    )
+                    return False
+                file_dim = int(data["dim"][0])
+                if file_dim != self.dim:
+                    warnings.warn(f"Dimension mismatch: file has {file_dim}, engine has {self.dim}")
+                    return False
+                self._np_vectors = data["vectors"].astype(np.float32)
+                self._np_ids = data["ids"].astype(np.uint64)
+                self._vector_count = len(self._np_ids)
+            return True
+        except Exception as e:
+            warnings.warn(f"NumPy load failed: {e}")
+            return False
+
     def save(self, path: Union[str, Path]) -> bool:
         """
         Save index to disk.
@@ -1029,7 +1123,22 @@ class GrainVDB:
             True if successful
         """
         with self._lock:
-            success = self._lib.gv2_save(self._ctx, str(path).encode('utf-8'))
+            if self._is_numpy:
+                try:
+                    with open(path, "wb") as f:
+                        np.savez(
+                            f,
+                            format=np.array(["grainvdb-numpy-v1"]),
+                            dim=np.array([self.dim], dtype=np.int64),
+                            vectors=self._np_vectors,
+                            ids=self._np_ids,
+                        )
+                    success = True
+                except Exception as e:
+                    warnings.warn(f"NumPy save failed: {e}")
+                    success = False
+            else:
+                success = self._lib.gv2_save(self._ctx, str(path).encode('utf-8'))
             if success:
                 try:
                     import json
@@ -1054,7 +1163,10 @@ class GrainVDB:
             True if successful
         """
         with self._lock:
-            success = self._lib.gv2_load(self._ctx, str(path).encode('utf-8'))
+            if self._is_numpy:
+                success = self._numpy_load(path)
+            else:
+                success = self._lib.gv2_load(self._ctx, str(path).encode('utf-8'))
             if success:
                 self._vector_count = self.vector_count
                 try:
@@ -1081,7 +1193,13 @@ class GrainVDB:
             True if successful
         """
         with self._lock:
-            success = self._lib.gv2_mmap(self._ctx, str(path).encode('utf-8'))
+            if self._is_numpy:
+                warnings.warn(
+                    "NumPy fallback engine has no zero-copy mmap; performing a normal load."
+                )
+                success = self._numpy_load(path)
+            else:
+                success = self._lib.gv2_mmap(self._ctx, str(path).encode('utf-8'))
             if success:
                 self._vector_count = self.vector_count
                 try:
@@ -1100,6 +1218,8 @@ class GrainVDB:
     def estimate_size(self) -> int:
         """Estimate file size in bytes for the stored vectors."""
         with self._lock:
+            if self._is_numpy:
+                return int(self._np_vectors.nbytes + self._np_ids.nbytes)
             return self._lib.gv2_estimate_size(self._ctx)
 
     def set_ef_search(self, ef: int) -> "GrainVDB":
@@ -1110,18 +1230,25 @@ class GrainVDB:
             ef: Search candidate pool size (higher = higher recall, slightly higher latency)
         """
         with self._lock:
+            if self._is_numpy:
+                return self
             self._lib.gv2_set_ef_search(self._ctx, ef)
             return self
 
     def set_batch_size(self, size: int) -> "GrainVDB":
         """Set default batch size."""
         with self._lock:
+            self.batch_size = size
+            if self._is_numpy:
+                return self
             self._lib.gv2_set_batch_size(self._ctx, size)
             return self
 
     def estimate_recall(self, k: int = 10) -> float:
         """Estimate search recall for the current index configuration."""
         with self._lock:
+            if self._is_numpy:
+                return 1.0  # brute-force exact search
             return float(self._lib.gv2_estimate_recall(self._ctx, k))
     
     def get_metrics(self) -> Metrics:
@@ -1139,6 +1266,13 @@ class GrainVDB:
                     ("memory_usage_mb", ctypes.c_float),
                 ]
             
+            if self._is_numpy:
+                return Metrics(
+                    avg_latency_ms=0.0, p50_latency_ms=0.0, p95_latency_ms=0.0,
+                    p99_latency_ms=0.0, throughput_qps=0.0, total_queries=0,
+                    gpu_utilization=0.0,
+                    memory_usage_mb=float(self._np_vectors.nbytes) / 1e6,
+                )
             metrics = MetricsStruct()
             success = self._lib.gv2_get_metrics(self._ctx, ctypes.byref(metrics))
             
@@ -1160,24 +1294,36 @@ class GrainVDB:
     def reset_metrics(self) -> "GrainVDB":
         """Reset performance metrics."""
         with self._lock:
+            if self._is_numpy:
+                return self
             self._lib.gv2_reset_metrics(self._ctx)
             return self
     
     def warmup(self) -> "GrainVDB":
         """Warm up GPU pipelines for consistent latency."""
         with self._lock:
+            if self._is_numpy:
+                return self
             self._lib.gv2_warmup(self._ctx)
             return self
     
     def synchronize(self) -> "GrainVDB":
         """Synchronize GPU (wait for all pending operations)."""
         with self._lock:
+            if self._is_numpy:
+                return self
             self._lib.gv2_synchronize(self._ctx)
             return self
     
     def clear(self) -> "GrainVDB":
         """Clear all vectors from the database."""
         with self._lock:
+            if self._is_numpy:
+                self._np_vectors = np.empty((0, self.dim), dtype=np.float32)
+                self._np_ids = np.empty((0,), dtype=np.uint64)
+                self._metadata = {}
+                self._vector_count = 0
+                return self
             self._lib.gv2_clear(self._ctx)
             self._vector_count = 0
             return self
