@@ -6,6 +6,8 @@ Native Metal-accelerated vector search with breakthrough optimizations.
 import ctypes
 import numpy as np
 import os
+import atexit
+import weakref
 from typing import List, Optional, Tuple, Union, Callable, Dict, Any
 from dataclasses import dataclass
 from enum import IntEnum
@@ -353,6 +355,9 @@ class GrainVDB:
 
         self._lib.gv2_get_error.restype = ctypes.c_char_p
         self._lib.gv2_get_error.argtypes = [ctypes.c_void_p]
+
+        self._lib.gv2_clear_error.argtypes = [ctypes.c_void_p]
+        self._lib.gv2_clear_error.restype = None
         
         # Create config structure
         class GV2Config(ctypes.Structure):
@@ -403,7 +408,26 @@ class GrainVDB:
             raise RuntimeError(
                 f"Native initialization failed: {error.decode() if error else 'Unknown error'}"
             )
-    
+
+    def close(self) -> None:
+        """Release the native Metal context and all GPU resources."""
+        if self._ctx:
+            self._lib.gv2_ctx_destroy(self._ctx)
+            self._ctx = None
+
+    def __del__(self) -> None:
+        """Release native resources on garbage collection."""
+        try:
+            self.close()
+        except Exception:
+            pass
+
+    def __enter__(self) -> "GrainVDB":
+        return self
+
+    def __exit__(self, *exc) -> None:
+        self.close()
+
     def _check_error(self) -> None:
         """Check and raise any native errors."""
         error = self._lib.gv2_get_error(self._ctx)

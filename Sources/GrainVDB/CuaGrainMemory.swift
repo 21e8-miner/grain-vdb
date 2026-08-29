@@ -118,14 +118,23 @@ public class CuaGrainMemorySwift {
         }
     }
 
+    private func getCachedAudit(cuaSequence: Int) -> [String: Any]? {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        return auditCache[cuaSequence]
+    }
+
+    private func setCachedAudit(cuaSequence: Int, json: [String: Any]) {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        auditCache[cuaSequence] = json
+    }
+
     /// Shells out to Cua Driver to verify the cryptographically secured action log with in-memory caching
     public func secureAudit(cuaSequence: Int) async throws -> [String: Any]? {
-        cacheLock.lock()
-        if let cached = auditCache[cuaSequence] {
-            cacheLock.unlock()
+        if let cached = getCachedAudit(cuaSequence: cuaSequence) {
             return cached
         }
-        cacheLock.unlock()
 
         let task = Process()
         task.executableURL = URL(fileURLWithPath: cuaBinaryPath)
@@ -142,9 +151,7 @@ public class CuaGrainMemorySwift {
             if task.terminationStatus == 0 {
                 let data = pipe.fileHandleForReading.readDataToEndOfFile()
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                    cacheLock.lock()
-                    auditCache[cuaSequence] = json
-                    cacheLock.unlock()
+                    setCachedAudit(cuaSequence: cuaSequence, json: json)
                     return json
                 }
             }

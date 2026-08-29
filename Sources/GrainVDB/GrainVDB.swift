@@ -30,7 +30,7 @@ public enum GrainEngineType: Int32 {
 }
 
 /// Vector search result item.
-public struct GrainSearchResult: Identifiable, Sendable {
+public struct GrainSearchResult: Identifiable, @unchecked Sendable {
     public let id: UInt64
     public let score: Float
     public let metadata: [String: Any]?
