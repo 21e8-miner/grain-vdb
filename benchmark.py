@@ -1,20 +1,38 @@
 #!/usr/bin/env python3
 """
-GrainVDB v2.0 - Apple Silicon Benchmark Runner
-Benchmarks Adaptive Dual-Engine (CPU Accelerate + Metal GPU),
-HNSW graph indexing, batch throughput, and zero-copy mmap.
+GrainVDB - Apple Silicon Benchmark Runner
+Benchmarks CPU Accelerate (ARM NEON SIMD), Metal GPU, HNSW graph indexing,
+batch throughput, and zero-copy mmap. Outputs structured JSON for CI artifacts.
 """
 
 import argparse
+import json
 import os
+import platform
+import subprocess
 import time
+from typing import Optional
 import numpy as np
 from grainvdb import GrainVDB, SearchMode, EngineType, HNSWConfig
 
 
-def run_benchmark(n_vectors: int = 20000, dim: int = 128, n_queries: int = 50, k: int = 10):
+def get_git_commit_sha() -> str:
+    try:
+        out = subprocess.check_output(["git", "rev-parse", "HEAD"], stderr=subprocess.DEVNULL)
+        return out.decode("utf-8").strip()
+    except Exception:
+        return "unknown"
+
+
+def run_benchmark(
+    n_vectors: int = 20000,
+    dim: int = 128,
+    n_queries: int = 50,
+    k: int = 10,
+    json_output_path: Optional[str] = None
+) -> dict:
     print("=" * 68)
-    print("  GrainVDB v2.0 - Apple Silicon Adaptive Benchmark")
+    print("  GrainVDB - Apple Silicon Adaptive Benchmark")
     print("=" * 68)
     print(f"  Vectors:        {n_vectors:,}")
     print(f"  Dimension:      {dim}")
@@ -46,9 +64,9 @@ def run_benchmark(n_vectors: int = 20000, dim: int = 128, n_queries: int = 50, k
         cpu_latencies.append(res.latency_ms)
         ground_truth_indices.append(set(res.indices))
 
-    cpu_p50 = np.percentile(cpu_latencies, 50)
-    cpu_p95 = np.percentile(cpu_latencies, 95)
-    cpu_p99 = np.percentile(cpu_latencies, 99)
+    cpu_p50 = float(np.percentile(cpu_latencies, 50))
+    cpu_p95 = float(np.percentile(cpu_latencies, 95))
+    cpu_p99 = float(np.percentile(cpu_latencies, 99))
     print(f"  ✓ Single Query Latency: p50: {cpu_p50:.3f} ms ({cpu_p50*1000:.1f} µs) | p95: {cpu_p95:.3f} ms | p99: {cpu_p99:.3f} ms")
 
     # 2. Benchmark Metal GPU Engine
@@ -62,12 +80,13 @@ def run_benchmark(n_vectors: int = 20000, dim: int = 128, n_queries: int = 50, k
         res = vdb_gpu.search(q, k=k)
         gpu_latencies.append(res.latency_ms)
 
-    gpu_p50 = np.percentile(gpu_latencies, 50)
-    gpu_p95 = np.percentile(gpu_latencies, 95)
+    gpu_p50 = float(np.percentile(gpu_latencies, 50))
+    gpu_p95 = float(np.percentile(gpu_latencies, 95))
     print(f"  ✓ Single Query Latency: p50: {gpu_p50:.3f} ms | p95: {gpu_p95:.3f} ms (Driver sync bound)")
 
     # Batch throughput measurement on GPU
     peak_qps = 0.0
+    batch_qps_map = {}
     for batch_sz in [16, 64, 128]:
         batch_queries = queries[:min(batch_sz, n_queries)]
         t_start = time.perf_counter()
@@ -76,6 +95,7 @@ def run_benchmark(n_vectors: int = 20000, dim: int = 128, n_queries: int = 50, k
         elapsed_sec = t_end - t_start
         qps = len(batch_queries) / elapsed_sec
         peak_qps = max(peak_qps, qps)
+        batch_qps_map[f"batch_{len(batch_queries)}"] = round(qps, 1)
         print(f"  ✓ Batch Size {len(batch_queries):3d} GPU Throughput: {qps:,.1f} QPS ({elapsed_sec*1000:.2f} ms total)")
 
     # 3. Benchmark HNSW Index
@@ -89,10 +109,6 @@ def run_benchmark(n_vectors: int = 20000, dim: int = 128, n_queries: int = 50, k
     hnsw_build_time = time.perf_counter() - t0
     print(f"  ✓ Built HNSW graph in {hnsw_build_time:.2f} s")
 
-    stats = vdb_hnsw.hnsw_stats
-    if stats:
-        print(f"  ✓ Nodes: {stats.num_nodes:,} | Edges: {stats.num_edges:,} | Max Level: {stats.max_level}")
-
     hnsw_latencies = []
     recalls = []
     for i, q in enumerate(queries):
@@ -102,9 +118,9 @@ def run_benchmark(n_vectors: int = 20000, dim: int = 128, n_queries: int = 50, k
         matched = len(set(res.indices).intersection(gt))
         recalls.append(matched / float(k))
 
-    hnsw_p50 = np.percentile(hnsw_latencies, 50)
-    hnsw_p95 = np.percentile(hnsw_latencies, 95)
-    mean_recall = np.mean(recalls)
+    hnsw_p50 = float(np.percentile(hnsw_latencies, 50))
+    hnsw_p95 = float(np.percentile(hnsw_latencies, 95))
+    mean_recall = float(np.mean(recalls))
     print(f"  ✓ Single Query Latency: p50: {hnsw_p50:.3f} ms | p95: {hnsw_p95:.3f} ms")
     print(f"  ✓ Recall@{k}: {mean_recall*100:.2f}% (vs exact scan)")
 
@@ -126,9 +142,62 @@ def run_benchmark(n_vectors: int = 20000, dim: int = 128, n_queries: int = 50, k
     if os.path.exists(tmp_path):
         os.remove(tmp_path)
 
+    vdb_cpu.close()
+    vdb_gpu.close()
+    vdb_hnsw.close()
+    vdb_mmap.close()
+
+    results_data = {
+        "timestamp": time.time(),
+        "git_commit": get_git_commit_sha(),
+        "platform": {
+            "system": platform.system(),
+            "machine": platform.machine(),
+            "processor": platform.processor(),
+            "python_version": platform.python_version(),
+        },
+        "parameters": {
+            "n_vectors": n_vectors,
+            "dimension": dim,
+            "n_queries": n_queries,
+            "k": k
+        },
+        "benchmarks": {
+            "cpu_accelerate": {
+                "p50_ms": round(cpu_p50, 4),
+                "p95_ms": round(cpu_p95, 4),
+                "p99_ms": round(cpu_p99, 4),
+                "ingest_throughput_vec_s": round(n_vectors / ingest_time, 0),
+                "recall": 1.0
+            },
+            "metal_gpu": {
+                "p50_ms": round(gpu_p50, 4),
+                "p95_ms": round(gpu_p95, 4),
+                "peak_qps": round(peak_qps, 1),
+                "batch_qps": batch_qps_map,
+                "recall": 1.0
+            },
+            "hnsw": {
+                "p50_ms": round(hnsw_p50, 4),
+                "p95_ms": round(hnsw_p95, 4),
+                "build_time_s": round(hnsw_build_time, 3),
+                "mean_recall": round(mean_recall, 4)
+            },
+            "zero_copy_mmap": {
+                "load_time_ms": round(mmap_time, 3),
+                "file_size_mb": round(file_size_mb, 2)
+            }
+        }
+    }
+
+    if json_output_path:
+        with open(json_output_path, "w") as f:
+            json.dump(results_data, f, indent=2)
+        print(f"\n  ✓ Exported benchmark metrics to {json_output_path}")
+
     print()
     print("=" * 68)
-    print("  Benchmark Summary & Architectural Comparison")
+    print("  Benchmark Summary (Reproducible on Apple Silicon)")
     print("=" * 68)
     print(f"  • CPU Accelerate Single-Query Latency (p50): {cpu_p50:.3f} ms ({cpu_p50*1000:.1f} µs) [100% recall]")
     print(f"  • Metal GPU Single-Query Latency (p50):      {gpu_p50:.3f} ms [100% recall]")
@@ -137,6 +206,8 @@ def run_benchmark(n_vectors: int = 20000, dim: int = 128, n_queries: int = 50, k
     print(f"  • Page-Aligned Zero-Copy mmap Load Time:    {mmap_time:.2f} ms")
     print("=" * 68)
 
+    return results_data
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="GrainVDB Benchmark Runner")
@@ -144,6 +215,7 @@ if __name__ == "__main__":
     parser.add_argument("--dim", type=int, default=128, help="Vector dimension (default: 128)")
     parser.add_argument("--n-queries", type=int, default=50, help="Number of test queries (default: 50)")
     parser.add_argument("--k", type=int, default=10, help="Top-K results (default: 10)")
+    parser.add_argument("--json", type=str, default=None, help="Path to export benchmark results as JSON")
     args = parser.parse_args()
 
     run_benchmark(
@@ -151,4 +223,5 @@ if __name__ == "__main__":
         dim=args.dim,
         n_queries=args.n_queries,
         k=args.k,
+        json_output_path=args.json
     )

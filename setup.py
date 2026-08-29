@@ -2,12 +2,12 @@ from setuptools import setup, find_packages
 
 setup(
     name="grainvdb",
-    version="2.0.0",
-    description="Apple Silicon-Native Embedded Vector Store for Local-First RAG",
+    version="2.1.0",
+    description="Apple Silicon-Native Embedded Vector Store & Trajectory Memory for AI Agents",
     author="GrainVDB Contributors",
     license="MIT",
     packages=find_packages(),
-    package_data={"grainvdb": ["*.dylib", "*.metallib"]},
+    package_data={"grainvdb": ["*.dylib", "*.metallib", "*.so"]},
     include_package_data=True,
     python_requires=">=3.9",
     install_requires=[
@@ -18,6 +18,7 @@ setup(
         "Intended Audience :: Developers",
         "License :: OSI Approved :: MIT License",
         "Operating System :: MacOS :: MacOS X",
+        "Operating System :: POSIX :: Linux",
         "Programming Language :: Python :: 3",
         "Topic :: Database",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
@@ -26,6 +27,7 @@ setup(
         "console_scripts": [
             "grainvdb = grainvdb.cli:main",
             "agent-memory = grainvdb.cli:agent_memory_main",
+            "grainvdb-mcp = grainvdb.mcp_server:main",
         ],
     },
 )

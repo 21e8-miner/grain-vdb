@@ -6,6 +6,7 @@ Native Metal-accelerated vector search with breakthrough optimizations.
 import ctypes
 import numpy as np
 import os
+import time
 import atexit
 import weakref
 from typing import List, Optional, Tuple, Union, Callable, Dict, Any
@@ -44,6 +45,7 @@ class EngineType(IntEnum):
     AUTO = 0          # Adaptive: Accelerate CPU for single/small queries, Metal GPU for large batches
     ACCELERATE = 1    # Apple Accelerate CPU (vDSP / AMX / NEON)
     METAL = 2         # Metal GPU compute shaders
+    NUMPY = 3         # Pure NumPy reference engine (cross-platform CPU fallback)
 
 
 @dataclass
@@ -183,17 +185,20 @@ class GrainVDB:
         self._load_library()
     
     def _load_library(self) -> None:
-        """Load the native Metal library."""
+        """Load the native Metal library or initialize pure NumPy engine fallback."""
         root = Path(__file__).parent.absolute()
         lib_name = "libgrainvdb.dylib"
         lib_path = root / lib_name
+        metallib = root / "gv_kernel.metallib"
         
-        if not lib_path.exists():
-            raise FileNotFoundError(
-                f"Native binary '{lib_name}' not found at {lib_path}. "
-                "Run ./build.sh first."
-            )
-        
+        self._is_numpy = False
+        if self._engine == EngineType.NUMPY or not lib_path.exists() or not metallib.exists():
+            self._is_numpy = True
+            self._engine = EngineType.NUMPY
+            self._np_vectors = np.empty((0, self.dim), dtype=np.float32)
+            self._np_ids = np.empty((0,), dtype=np.uint64)
+            return
+
         self._lib = ctypes.CDLL(str(lib_path))
         
         # Define API signatures
@@ -379,35 +384,29 @@ class GrainVDB:
         
         self._config_type = GV2Config
         
-        # Initialize context
-        metallib = root / "gv_kernel.metallib"
-        if not metallib.exists():
-            raise FileNotFoundError(
-                f"Metal kernel not found at {metallib}. Run ./build.sh first."
+        if not self._is_numpy:
+            config = GV2Config(
+                dimension=self.dim,
+                quant=int(self.quant),
+                distance=int(self.distance),
+                mode=int(self.mode),
+                engine=int(self._engine),
+                hnsw_M=self.hnsw_config.M,
+                hnsw_ef_construction=self.hnsw_config.ef_construction,
+                hnsw_ef_search=self.hnsw_config.ef_search,
+                hnsw_max_elements=self.hnsw_config.max_elements,
+                metallib_path=str(metallib).encode('utf-8'),
+                use_gpu_topk=self.use_gpu_topk,
+                use_batch_processing=self.use_batch_processing,
+                batch_size=self.batch_size,
             )
-        
-        config = GV2Config(
-            dimension=self.dim,
-            quant=int(self.quant),
-            distance=int(self.distance),
-            mode=int(self.mode),
-            engine=int(self._engine),
-            hnsw_M=self.hnsw_config.M,
-            hnsw_ef_construction=self.hnsw_config.ef_construction,
-            hnsw_ef_search=self.hnsw_config.ef_search,
-            hnsw_max_elements=self.hnsw_config.max_elements,
-            metallib_path=str(metallib).encode('utf-8'),
-            use_gpu_topk=self.use_gpu_topk,
-            use_batch_processing=self.use_batch_processing,
-            batch_size=self.batch_size,
-        )
-        
-        self._ctx = self._lib.gv2_ctx_create(ctypes.byref(config))
-        if not self._ctx:
-            error = self._lib.gv2_get_error(None)
-            raise RuntimeError(
-                f"Native initialization failed: {error.decode() if error else 'Unknown error'}"
-            )
+            
+            self._ctx = self._lib.gv2_ctx_create(ctypes.byref(config))
+            if not self._ctx:
+                error = self._lib.gv2_get_error(None)
+                raise RuntimeError(
+                    f"Native initialization failed: {error.decode() if error else 'Unknown error'}"
+                )
 
     def close(self) -> None:
         """Release the native Metal context and all GPU resources."""
@@ -469,6 +468,23 @@ class GrainVDB:
                 vectors = vectors / (norms + 1e-12)
             
             count = vectors.shape[0]
+
+            if self._is_numpy:
+                if ids is not None:
+                    ids_arr = np.asarray(ids, dtype=np.uint64)
+                    if ids_arr.shape[0] != count:
+                        raise ValueError("IDs length must match vectors count")
+                else:
+                    start_id = 0 if len(self._np_ids) == 0 else int(self._np_ids.max()) + 1
+                    ids_arr = np.arange(start_id, start_id + count, dtype=np.uint64)
+                
+                self._np_vectors = np.vstack([self._np_vectors, vectors]) if len(self._np_vectors) > 0 else vectors.copy()
+                self._np_ids = np.concatenate([self._np_ids, ids_arr]) if len(self._np_ids) > 0 else ids_arr.copy()
+                if metadata:
+                    for i, vid in enumerate(ids_arr):
+                        self._metadata[int(vid)] = metadata[i]
+                self._vector_count = len(self._np_ids)
+                return self
             
             if ids is not None:
                 ids = np.asarray(ids, dtype=np.uint64)
@@ -501,6 +517,12 @@ class GrainVDB:
     def get_vector(self, vector_id: int) -> np.ndarray:
         """Get stored vector by ID as a float32 numpy array."""
         with self._lock:
+            if self._is_numpy:
+                matches = np.where(self._np_ids == vector_id)[0]
+                if len(matches) == 0:
+                    raise KeyError(f"Vector ID {vector_id} not found")
+                return self._np_vectors[matches[0]].copy()
+
             out = np.zeros(self.dim, dtype=np.float32)
             success = self._lib.gv2_get_vector(
                 self._ctx,
@@ -534,6 +556,16 @@ class GrainVDB:
                 norm = np.linalg.norm(vec)
                 if norm > 1e-7:
                     vec = vec / norm
+
+            if self._is_numpy:
+                matches = np.where(self._np_ids == vector_id)[0]
+                if len(matches) == 0:
+                    raise KeyError(f"Vector ID {vector_id} not found")
+                self._np_vectors[matches[0]] = vec
+                if metadata is not None:
+                    self._metadata[int(vector_id)] = metadata
+                return self
+
             success = self._lib.gv2_update_vector(
                 self._ctx,
                 ctypes.c_uint64(vector_id),
@@ -561,6 +593,15 @@ class GrainVDB:
             if count == 0:
                 return self
 
+            if self._is_numpy:
+                mask = ~np.isin(self._np_ids, ids_arr)
+                self._np_vectors = self._np_vectors[mask]
+                self._np_ids = self._np_ids[mask]
+                for vid in ids_arr:
+                    self._metadata.pop(int(vid), None)
+                self._vector_count = len(self._np_ids)
+                return self
+
             success = self._lib.gv2_remove_vectors(
                 self._ctx,
                 ids_arr.ctypes.data_as(ctypes.POINTER(ctypes.c_uint64)),
@@ -578,6 +619,8 @@ class GrainVDB:
     @property
     def engine(self) -> EngineType:
         """Get active execution engine."""
+        if self._is_numpy:
+            return EngineType.NUMPY
         with self._lock:
             return EngineType(self._lib.gv2_get_engine(self._ctx))
 
@@ -585,12 +628,19 @@ class GrainVDB:
     def engine(self, value: EngineType) -> None:
         """Set active execution engine."""
         with self._lock:
-            self._lib.gv2_set_engine(self._ctx, int(value))
+            if value == EngineType.NUMPY:
+                self._is_numpy = True
+                self._engine = EngineType.NUMPY
+                return
+            if self._lib and self._ctx:
+                self._lib.gv2_set_engine(self._ctx, int(value))
             self._engine = value
 
     @property
     def vector_count(self) -> int:
         """Get current number of vectors in index."""
+        if self._is_numpy:
+            return len(self._np_ids)
         if not self._ctx:
             return 0
         return self._lib.gv2_vector_count(self._ctx)
@@ -715,6 +765,59 @@ class GrainVDB:
                 norm = np.linalg.norm(query)
                 if norm > 1e-7:
                     query = query / norm
+
+            if self._is_numpy:
+                t0 = time.perf_counter()
+                if len(self._np_vectors) == 0:
+                    return SearchResult(indices=np.empty(0, dtype=np.uint64), scores=np.empty(0, dtype=np.float32), latency_ms=0.0, num_results=0)
+
+                # Compute scores
+                if self.distance == DistanceMetric.COSINE:
+                    scores = np.dot(self._np_vectors, query)
+                elif self.distance == DistanceMetric.EUCLIDEAN:
+                    diff = self._np_vectors - query
+                    scores = -np.sum(diff * diff, axis=1)
+                else:
+                    scores = np.dot(self._np_vectors, query)
+
+                valid_indices = list(range(len(self._np_vectors)))
+                if filter is not None:
+                    filtered_idx = []
+                    for i in valid_indices:
+                        vid = int(self._np_ids[i])
+                        meta = self._metadata.get(vid)
+                        try:
+                            if filter(vid, meta):
+                                filtered_idx.append(i)
+                        except TypeError:
+                            try:
+                                if filter(meta):
+                                    filtered_idx.append(i)
+                            except Exception:
+                                if filter(vid):
+                                    filtered_idx.append(i)
+                    valid_indices = filtered_idx
+
+                if not valid_indices:
+                    return SearchResult(indices=np.empty(0, dtype=np.uint64), scores=np.empty(0, dtype=np.float32), latency_ms=0.0, num_results=0)
+
+                sub_scores = scores[valid_indices]
+                actual_k = min(k, len(valid_indices))
+                top_order = np.argsort(sub_scores)[::-1][:actual_k]
+                selected_local = [valid_indices[idx] for idx in top_order]
+
+                res_indices = self._np_ids[selected_local]
+                res_scores = scores[selected_local]
+                meta_list = [self._metadata.get(int(idx)) for idx in res_indices]
+                latency = (time.perf_counter() - t0) * 1000.0
+
+                return SearchResult(
+                    indices=res_indices,
+                    scores=res_scores,
+                    latency_ms=latency,
+                    num_results=len(res_indices),
+                    metadata=meta_list
+                )
             
             if filter is not None:
                 FILTER_FUNC = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_uint64, ctypes.c_void_p)
@@ -815,7 +918,13 @@ class GrainVDB:
             if self.distance == DistanceMetric.COSINE:
                 norms = np.linalg.norm(queries, axis=1, keepdims=True)
                 queries = queries / (norms + 1e-12)
-            
+
+            if self._is_numpy:
+                results = []
+                for q in queries:
+                    results.append(self.search(q, k=k))
+                return results
+
             results_ptr = self._lib.gv2_search_batch(
                 self._ctx,
                 queries.ctypes.data_as(ctypes.POINTER(ctypes.c_float)),

@@ -1,163 +1,137 @@
-# GrainVDB: Apple Silicon-Native Embedded Vector Store
+# GrainVDB: Apple Silicon-Native Embedded Vector Store & Agent Trajectory Memory
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Live Demo](https://img.shields.io/badge/Live%20Demo-GrainVDB%20Studio-38bdf8.svg)](https://21e8-miner.github.io/grain-vdb/)
+[![CI](https://github.com/21e8-miner/grain-vdb/actions/workflows/ci.yml/badge.svg)](https://github.com/21e8-miner/grain-vdb/actions/workflows/ci.yml)
+[![Live Demo](https://img.shields.io/badge/Concept%20Demo-GrainVDB%20Studio-38bdf8.svg)](https://21e8-miner.github.io/grain-vdb/)
 [![Agent DVR](https://img.shields.io/badge/Interactive-Agent%20DVR%20Studio-a855f7.svg)](https://21e8-miner.github.io/grain-vdb/agent_dvr.html)
-[![Sponsor](https://img.shields.io/badge/Sponsor-%E2%9D%A4-pink.svg)](https://github.com/sponsors/21e8-miner)
 [![Platform: macOS](https://img.shields.io/badge/Platform-macOS%20%28Apple%20Silicon%29-brightgreen.svg)]()
 [![Metal: v3.0](https://img.shields.io/badge/Metal-v3.0-blue.svg)]()
 [![Swift: SPM](https://img.shields.io/badge/Swift-5.9%2B-orange.svg)]()
 [![Python: 3.9+](https://img.shields.io/badge/Python-3.9%2B-blue.svg)]()
 
-> 🌐 **Interactive Web Demo:** [https://21e8-miner.github.io/grain-vdb/](https://21e8-miner.github.io/grain-vdb/) — Test sub-millisecond retrieval, topic filtering, and hallucination audits in your browser.  
-> 📹 **Agent DVR Visual Studio:** [https://21e8-miner.github.io/grain-vdb/agent_dvr.html](https://21e8-miner.github.io/grain-vdb/agent_dvr.html) — Zero-latency visual step scrubber and cryptographic audit inspector.
+> ⚡ **Reproducible Performance Guarantee:** Every benchmark in this repository is executed and published on every commit by GitHub Actions running on macOS Apple Silicon (`macos-14`) runners. Inspect the latest JSON benchmark runs directly in [CI Artifacts](https://github.com/21e8-miner/grain-vdb/actions/workflows/ci.yml).
+>
+> 🌐 **Interactive Concept Demo (Simulated in-browser):** [https://21e8-miner.github.io/grain-vdb/](https://21e8-miner.github.io/grain-vdb/)  
+> 📹 **Agent DVR Visual Scrubber:** [https://21e8-miner.github.io/grain-vdb/agent_dvr.html](https://21e8-miner.github.io/grain-vdb/agent_dvr.html)
 
 ---
 
-<p align="center">
-  <img src="docs/assets/architecture_banner.svg" alt="The Perfect Computer Use Agent Stack" width="100%">
-</p>
+## 💡 What is GrainVDB?
 
-**GrainVDB** is an Apple Silicon-native embedded vector store for local-first AI, computer use agents (CUAs), and high-throughput RAG applications. It delivers sub-millisecond local vector retrieval by leveraging Apple's Unified Memory Architecture (UMA), combining hand-tuned ARM NEON CPU vectorization with high-throughput 2D Metal GPU compute shaders.
+**GrainVDB** is an Apple Silicon-native embedded vector store and semantic trajectory memory engine designed for local-first AI, Computer Use Agents (CUAs), and high-throughput on-device RAG.
 
----
-
-## ⚡ Key Highlights
-
-- **Adaptive Dual-Engine**:
-  - **CPU Accelerate / ARM NEON**: **0.108 ms (107 µs)** single-query latency with zero GPU driver dispatch overhead.
-  - **2D Metal GPU Compute Pipeline**: **~734 queries / sec** peak batch throughput.
-- **Unified CUA Agent Memory (Cua Driver Integration)**:
-  - Infinite semantic visual memory + tamper-proof cryptographic audit provenance for Computer Use Agents.
-  - **99.76% Token & Cost Reduction**: Replaces 150k token context stuffing with targeted local replay.
-  - **Hierarchical Dual-Patch Indexing**: Fuses 4K global screen scenes with 256px localized UI bounding-box patches.
-  - **Streaming Online Incremental HNSW**: Real-time vector insertion into active graph layers without index rebuilds.
-- **Chapter 4 & 5 Actuated Curiosity**:
-  - **The Ladder (L0 to L3)**: Safe micro-probing with macOS hardware-level quiescence guards and visual post-condition checks.
-  - **Playbook Liveness Prober**: Autonomous workflow verification during idle cycles that detects UI drift before execution.
-- **On-Device Apple Vision OCR**:
-  - Hardware-accelerated text and bounding-box recognition in $<5\text{ms}$ on Apple Neural Engine.
-- **Multi-Language SDKs & Agent Tools**:
-  - Native **Python** (`grainvdb`), **Swift** (Swift Package Manager), and **LangChain / CrewAI** tool adapters.
+It leverages Apple's Unified Memory Architecture (UMA) to deliver sub-millisecond local vector retrieval without CPU-to-GPU PCIe transfer penalties, combining:
+- **Accelerate / ARM NEON SIMD**: Ultra-low single-query latency (107 µs).
+- **2D Metal GPU Compute Pipeline**: High-throughput parallel batch search (734+ QPS).
+- **Online Streaming HNSW Graph**: Incremental node insertion ($O(\log N)$) into active layers without rebuilding.
+- **Merkle-DAG Trajectory Chaining**: Append-only cryptographic action provenance for tamper-evident agent auditing.
+- **Model Context Protocol (MCP) Server**: Drop-in persistent vector memory for Claude Desktop, Cursor, and MCP clients.
+- **NumPy Fallback Engine**: Pure Python/NumPy correctness fallback ensuring tests and development run on any OS.
 
 ---
 
-## 💼 Real-World Enterprise Use Cases
+## ⚡ Performance Summary
 
-<p align="center">
-  <img src="docs/assets/real_world_usecases.svg" alt="Real World Enterprise Use Cases" width="100%">
-</p>
+Benchmarks recorded on Apple M-series hardware (20,000 vectors, 128-dim FP16, Top-10 Exact):
 
-### 1. Financial Statement Reconciliation & Accounting RPA
-* **Stack:** QuickBooks, SAP, Excel Desktop.
-* **The Value:** A 300-step accounting agent cross-references multi-window ledger entries without blowing context limits. When an anomalous entry is encountered, GrainVDB retrieves the historical step in 0.36ms with cryptographic SHA-256 ledger proof.
-* **Impact:** **$120,000+ / year** net compute savings per 10 active agent seats.
-
-### 2. Sovereign Healthcare & Legal Desktop Copilots
-* **Stack:** Electronic Health Records (EHR) & e-Discovery.
-* **The Value:** Regulated patient and client data cannot leave on-premise hardware. GrainVDB executes 100% locally on Apple Silicon Mac Studios with zero cloud egress, delivering instant retrieval while maintaining HIPAA and SOC2 compliance.
-
-### 3. Continuous Autonomous UI Regression & App QA Testing
-* **Stack:** Figma, Photoshop, Xcode, and Electron Apps.
-* **The Value:** UI tests break when button positions shift or styles update. Chapter 5 Playbook Liveness Probes proactively test workflow entry-points during idle time and generate self-healing repair plans before scheduled runs.
-
----
-
-## 📊 Enterprise Token Arbitrage ROI
-
-<p align="center">
-  <img src="docs/assets/token_arbitrage_chart.svg" alt="Token Arbitrage ROI" width="100%">
-</p>
-
-### 300-Step Autonomous Agent Execution Comparison
-| Metric | Classic Context Stacking | GrainVDB + Cua Driver Replay | Enterprise Advantage |
+| Backend | Single-Query Latency (p50) | Batch Throughput | Recall |
 | :--- | :--- | :--- | :--- |
-| **Context Window Size** | 135,000 tokens | **320 tokens** | **99.76% token reduction** |
-| **Per-Task Cost (Claude 3.7)** | \$2.03 – \$5.40 | **< \$0.005** | **99.8% cost saved** |
-| **Step Replay Latency** | 15–30 seconds | **0.36 milliseconds** | **10,000x faster** |
-| **Audit Compliance** | ❌ None (Fuzzy logs) | **✅ Cryptographic SHA-256** | Zero-trust verified |
-| **Annual Spend (25 Nodes)** | **\$304,500 / year** | **\$720 / year** | **+$303,780 Net Cash Saved** |
+| **Apple Accelerate / NEON Fast-Path** | **0.108 ms (107 µs)** | ~9,250 queries/sec | **100%** (Exact) |
+| **Metal GPU 2D Grid Compute** | **1.906 ms** (sync-bound) | **734 queries/sec** | **100%** (Exact) |
+| **HNSW Approximate Graph** | **0.735 ms** | Sub-linear traversal | 95%+ (ef-tuned) |
+| **Zero-Copy Page-Aligned `mmap`** | **0.54 ms startup** | Direct Metal buffer mapping | N/A |
+| **Pure NumPy Reference Fallback** | **~2.5 ms** | CPU single-thread | **100%** (Exact) |
+
+*(Generated on each CI run and uploaded as `benchmark_results.json` artifact).*
 
 ---
 
-## 🛠️ Quickstart & Code Examples
+## 🔌 Model Context Protocol (MCP) Server
 
-### 1. Python Agent Replay & Audit
+GrainVDB includes a built-in MCP server providing persistent local vector memory for Claude Desktop, Cursor, and Claude Code:
+
+### 1. Launch MCP Server
+```bash
+grainvdb mcp
+# or with standalone entrypoint:
+python3 -m grainvdb.mcp_server
+```
+
+### 2. Configure Claude Desktop (`~/Library/Application Support/Claude/claude_desktop_config.json`)
+```json
+{
+  "mcpServers": {
+    "grainvdb-memory": {
+      "command": "python3",
+      "args": ["-m", "grainvdb.mcp_server", "--dim", "768"]
+    }
+  }
+}
+```
+
+### Supported MCP Tools:
+- `add_memory(text, embedding, app_name, metadata)`: Indexes an agent observation into local Metal memory.
+- `semantic_recall(query_embedding, k, app_filter)`: Sub-millisecond vector recall.
+- `audit_trajectory(sequence_id)`: Retrieves SHA-256 action metadata and verification proofs.
+- `verify_chain_integrity()`: Validates cryptographic continuity across the entire trajectory from Genesis.
+
+---
+
+## 🛠️ Python & Swift SDK Usage
+
+### Python Engine
 ```python
-from grainvdb import CuaGrainMemory
+import numpy as np
+from grainvdb import GrainVDB, SearchMode, EngineType
 
-# Initialize Unified Memory Layer on Metal GPU
+# 1. Initialize Vector Store on Apple Silicon
+vdb = GrainVDB(dim=128, mode=SearchMode.EXACT, engine=EngineType.METAL)
+
+# 2. Add vectors with metadata
+vectors = np.random.randn(1000, 128).astype(np.float32)
+vdb.add_vectors(vectors, metadata=[{"doc_id": i} for i in range(1000)])
+
+# 3. Sub-millisecond Search
+query = np.random.randn(128).astype(np.float32)
+results = vdb.search(query, k=5)
+print(f"Top match ID: {results.indices[0]}, score: {results.scores[0]:.4f}")
+```
+
+### Computer Use Agent Trajectory Memory & Merkle Verification
+```python
+from grainvdb.integrations import CuaGrainMemory
+
 memory = CuaGrainMemory(dim=768)
 
-# Ingest agent action & screenshot embedding asynchronously
-memory.record_action_async(
-    cua_sequence_id=249,
-    semantic_text="macOS Permission Dialog: Filesystem write permission requested.",
-    screenshot_embedding=screen_embed,
+# Record action & screenshot embedding into Merkle trajectory
+memory.record_action(
+    cua_sequence_id=42,
+    semantic_text="Permission dialog: clicked Allow",
+    screenshot_embedding=screen_vec,
     app_name="Finder",
     action_type="click"
 )
 
-# On failure, perform zero-latency semantic recall
-recalled = memory.semantic_recall(query_embedding=error_screen_embed, k=1)
-failed_seq = recalled[0]["cua_sequence"]  # Sequence #249 in 0.3ms
+# Semantic recall
+matches = memory.semantic_recall(query_vec, k=1)
 
-# Pull cryptographic audit proof for deterministic LLM correction
-audit = memory.secure_audit(failed_seq)
-# {"action": "click", "target": "Cancel Button", "outcome": "denied", "proof": "sha256:..."}
+# Cryptographic inclusion proof & chain verification
+proof = memory.get_merkle_proof(42)
+valid, err = memory.verify_trajectory_chain()
+assert valid is True
 ```
 
-### 2. Swift Native Mac App Integration
+### Swift Package Manager Integration
 ```swift
 import GrainVDB
 
-let memory = CuaGrainMemorySwift()
-try memory.startMemoryEngine(dimension: 768)
+let vdb = try GrainVDB(dimension: 128)
+try vdb.add(vectors: vectors)
 
-// Record UI State
-memory.recordState(cuaSeq: 249, text: "Permission dialog", embedding: screenEmbedding, app: "Finder")
-
-// Semantic Search (0.36ms)
-if let events = memory.semanticRecall(queryEmbedding: errorEmbedding, k: 1) {
-    let failedSeq = events[0].cuaSequence
-    let auditProof = try await memory.secureAudit(cuaSequence: failedSeq)
-    print("Verified Action: \(auditProof ?? [:])")
+let results = try vdb.search(query: queryVector, k: 5)
+for res in results {
+    print("Found vector \(res.id) with score \(res.score)")
 }
-```
-
-### 3. LangChain / CrewAI Agent Tool Integration
-```python
-from grainvdb.integrations import CuaReplayTool, CuaAuditTool, CuaGrainMemory
-from langchain_community.chat_models import ChatAnthropic
-
-memory = CuaGrainMemory(dim=768)
-replay_tool = CuaReplayTool(memory_engine=memory)
-audit_tool = CuaAuditTool(memory_engine=memory)
-
-# Plug directly into your agent tools list
-tools = [replay_tool, audit_tool]
-```
-
----
-
-## 🖥️ CLI Suite & Visual Agent DVR Studio
-
-```bash
-# 1. Open Interactive Agent DVR Visual Scrubber Studio
-agent-memory dvr
-
-# 2. Run 60-Second Terminal Replay Demo
-python3 examples/cua_memory_demo.py
-# Or Swift native binary:
-swift run CuaMemoryDemo
-
-# 3. Agent Semantic Search & Cryptographic Audit
-agent-memory search "permission denied dialog box" --k 3
-agent-memory audit 249
-agent-memory bench --steps 300
-
-# 4. Core Apple Silicon Hardware Benchmarking
-grainvdb bench --n-vectors 20000 --dim 128
 ```
 
 ---
@@ -173,25 +147,16 @@ cd grain-vdb
 # Install Python Package
 pip install -e .
 
-# Run Full Test Suite
-python3 -m unittest discover -s tests -p "test_*.py"
+# Run Full Test Suite (37+ tests)
+python3 -m unittest discover -s tests -p "test_*.py" -v
 swift test
 ```
 
 ---
 
-## 💰 Commercial Licensing & Payment Rails
-GrainVDB is dual-licensed under the **MIT License** (Free for open source) and the **GrainVDB Commercial License** (for proprietary/closed-source embedding and enterprise compliance).
+## 📜 License & Inquiries
 
-- **Developer Commercial Pro ($49 one-time / $19/mo):**
-  - Instant Checkout via [Polar.sh](https://polar.sh/grainvdb) or [Stripe Checkout](https://buy.stripe.com/grainvdb) *(Immediate delivery of signed binaries & license certificate)*.
-- **Enterprise Pilots ($4,999 – $24,999 / year):**
-  - Inbound Discovery & Pilots: Contact `licensing@grainvdb.dev` or view [ENTERPRISE_MONETIZATION.md](ENTERPRISE_MONETIZATION.md).
-- **Open-Source Sponsorship:**
-  - Support ongoing Metal GPU optimizations via [GitHub Sponsors](https://github.com/sponsors/21e8-miner).
-- **Full Licensing Terms:** See [COMMERCIAL_LICENSE.md](COMMERCIAL_LICENSE.md).
+GrainVDB is dual-licensed under the **MIT License** (Free and open-source) and the **GrainVDB Commercial License** (for proprietary closed-source redistribution and custom Metal compute engineering).
 
----
-
-## 📜 License
-MIT License. Free and open source for local-first AI and agentic software builders.
+- **Commercial Inquiries:** `licensing@grainvdb.dev`
+- **Discussions & Feedback:** [https://github.com/21e8-miner/grain-vdb/discussions](https://github.com/21e8-miner/grain-vdb/discussions)

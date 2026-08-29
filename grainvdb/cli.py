@@ -214,19 +214,14 @@ def agent_memory_main() -> int:
 
     elif args.subcommand == "license":
         print("=" * 70)
-        print("  GrainVDB & Cua Driver: Commercial Licensing & Enterprise Support")
+        print("  GrainVDB: Open Source & Commercial Licensing")
         print("=" * 70)
-        print("  Licensing Tiers:")
-        print("    • Community Edition:      Free ($0) under MIT License")
-        print("    • Developer Commercial:   $49 one-time (or $19/mo)")
-        print("                              [Polar Checkout]:  https://polar.sh/grainvdb")
-        print("                              [Stripe Checkout]: https://buy.stripe.com/grainvdb")
-        print("    • Enterprise Automation:  $4,999 / year (Async Metal GPU, Chapters 4/5)")
-        print("    • Sovereign Compliance:   $24,999 / year (FINRA/HIPAA Audit Certification)")
-        print("\n  Enterprise Inquiries & Pilots:")
-        print("    • Email:   licensing@grainvdb.dev")
-        print("    • Web:     https://21e8-miner.github.io/grain-vdb/#pricing")
-        print("    • Sponsor: https://github.com/sponsors/21e8-miner")
+        print("  • Open Source Edition:   MIT License (Free for OSS and personal use)")
+        print("  • Commercial / Support:  Closed-source embedding, dedicated SLA, custom Metal kernels")
+        print("\n  Inquiries & Commercial Terms:")
+        print("    • Email:        licensing@grainvdb.dev")
+        print("    • Discussions:  https://github.com/21e8-miner/grain-vdb/discussions")
+        print("    • Repository:   https://github.com/21e8-miner/grain-vdb")
         print("=" * 70)
         return 0
 
@@ -299,6 +294,12 @@ def main() -> int:
     audit_parser.add_argument("file", type=str, help="Path to .gvdb database file")
     audit_parser.add_argument("--dim", type=int, default=128, help="Vector dimension (default: 128)")
 
+    # mcp
+    mcp_parser = subparsers.add_parser("mcp", help="Start Model Context Protocol (MCP) Server for Claude Desktop & Cursor")
+    mcp_parser.add_argument("--dim", type=int, default=128, help="Vector dimension (default: 128)")
+    mcp_parser.add_argument("--engine", type=str, default="auto", choices=["auto", "metal", "accelerate"])
+    mcp_parser.add_argument("--db-path", type=str, default=None, help="Optional persistent .gvdb file path")
+
     # license
     subparsers.add_parser("license", help="View commercial licensing options and checkout rails")
 
@@ -316,6 +317,11 @@ def main() -> int:
             n_queries=args.n_queries,
             k=args.k,
         )
+        return 0
+    elif args.command == "mcp":
+        from .mcp_server import GrainVDBMCPServer
+        server = GrainVDBMCPServer(dimension=args.dim, engine=args.engine, db_path=args.db_path)
+        server.run_stdio_loop()
         return 0
     elif args.command == "info":
         return cmd_info(args)

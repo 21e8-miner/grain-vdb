@@ -21,19 +21,12 @@
             <div class="w-8 h-8 rounded-lg bg-sky-500 flex items-center justify-center font-bold text-black text-lg">G</div>
             <div>
                 <h1 class="text-lg font-bold tracking-tight text-white flex items-center gap-2">
-                    GrainVDB <span class="text-xs bg-sky-500/20 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded-full font-mono">Agent DVR v2.1</span>
+                    GrainVDB <span class="text-xs bg-sky-500/20 text-sky-400 border border-sky-500/30 px-2 py-0.5 rounded-full font-mono">Agent DVR</span>
                 </h1>
-                <p class="text-xs text-gray-400">Zero-Latency Visual Replay & Cryptographic Audit Studio</p>
+                <p class="text-xs text-gray-400">Visual Replay &amp; Cryptographic Audit Studio (Interactive Concept Demo)</p>
             </div>
         </div>
         <div class="flex items-center space-x-3">
-            <div class="flex items-center space-x-2 text-xs bg-gray-800 border border-gray-700 px-3 py-1.5 rounded-lg">
-                <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
-                <span class="text-gray-300 font-mono">Metal GPU: Active (0.36ms)</span>
-            </div>
-            <button onclick="openLicenseModal()" class="text-xs bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold px-3 py-1.5 rounded-lg shadow transition">
-                Commercial License &amp; Pilot
-            </button>
             <a href="https://github.com/21e8-miner/grain-vdb" target="_blank" class="text-xs bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-700 px-3 py-1.5 rounded-lg transition font-medium">GitHub Repository</a>
         </div>
     </header>
@@ -182,65 +175,6 @@
         document.getElementById('btn-prev').addEventListener('click', () => updateState(Math.max(0, parseInt(scrubber.value) - 1)));
         document.getElementById('btn-next').addEventListener('click', () => updateState(Math.min(300, parseInt(scrubber.value) + 1)));
 
-        function openLicenseModal() {
-            document.getElementById('licenseModal').classList.remove('hidden');
-            document.getElementById('licenseModal').classList.add('flex');
-        }
-
-        function closeLicenseModal() {
-            document.getElementById('licenseModal').classList.add('hidden');
-            document.getElementById('licenseModal').classList.remove('flex');
-        }
-
-        function submitLicenseLead(e) {
-            e.preventDefault();
-            const email = document.getElementById('leadEmail').value;
-            const company = document.getElementById('leadCompany').value;
-            const tier = document.getElementById('licenseTier').value;
-            
-            alert(`Thank you! An invoice and activation packet for ${tier} has been generated for ${email}. You will receive a direct link shortly.`);
-            closeLicenseModal();
-        }
     </script>
-
-    <!-- License & Pilot Modal -->
-    <div id="licenseModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden items-center justify-center p-4">
-        <div class="bg-gray-900 border border-gray-700 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
-            <button onclick="closeLicenseModal()" class="absolute right-4 top-4 text-gray-400 hover:text-white">✕</button>
-            <div>
-                <span class="text-[10px] font-mono px-2.5 py-0.5 rounded bg-sky-500/20 text-sky-400 border border-sky-500/30 font-semibold">ENTERPRISE &amp; PRO LICENSING</span>
-                <h3 class="text-lg font-bold text-white mt-1">GrainVDB Commercial License</h3>
-                <p class="text-xs text-gray-400">Unlock closed-source redistribution, multi-threaded async ingestion, and priority SLA support.</p>
-            </div>
-
-            <form onsubmit="submitLicenseLead(event)" class="space-y-3 pt-2 text-xs">
-                <div>
-                    <label class="text-gray-300 font-medium">License Tier</label>
-                    <select id="licenseTier" class="w-full mt-1 bg-gray-950 border border-gray-700 rounded-lg p-2.5 text-gray-200">
-                        <option value="Developer Commercial Pro ($49 one-time)">Developer Commercial Pro — $49 one-time (or $19/mo)</option>
-                        <option value="Enterprise CUA Automation ($4,999/yr)">Enterprise CUA Automation Suite — $4,999 / year</option>
-                        <option value="Sovereign Compliance & Audit ($24,999/yr)">Sovereign Compliance &amp; FINRA/HIPAA Audit — $24,999 / year</option>
-                    </select>
-                </div>
-                <div>
-                    <label class="text-gray-300 font-medium">Work Email</label>
-                    <input type="email" id="leadEmail" required placeholder="name@company.com" class="w-full mt-1 bg-gray-950 border border-gray-700 rounded-lg p-2.5 text-gray-200">
-                </div>
-                <div>
-                    <label class="text-gray-300 font-medium">Organization / Project</label>
-                    <input type="text" id="leadCompany" placeholder="e.g. Acme Corp / AI Agent Startup" class="w-full mt-1 bg-gray-950 border border-gray-700 rounded-lg p-2.5 text-gray-200">
-                </div>
-                <div class="pt-2">
-                    <button type="submit" class="w-full py-2.5 rounded-lg bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white font-semibold shadow transition">
-                        Proceed to Checkout / Invoice →
-                    </button>
-                </div>
-                <div class="flex items-center justify-between text-[11px] text-gray-500 pt-1">
-                    <span>Direct Inquiries: <a href="mailto:licensing@grainvdb.dev" class="text-sky-400 underline">licensing@grainvdb.dev</a></span>
-                    <a href="https://github.com/sponsors/21e8-miner" target="_blank" class="text-purple-400 hover:underline">Sponsor on GitHub</a>
-                </div>
-            </form>
-        </div>
-    </div>
 </body>
 </html>

@@ -237,31 +237,37 @@ class CuaGrainMemory:
 
     def secure_audit(self, cua_sequence_id: int) -> Optional[Dict[str, Any]]:
         """
-        Queries Cua Driver's encrypted history to verify capabilities and proof.
-        Results are cached in-memory to prevent redundant subprocess spawns.
+        Queries Cua action provenance. Checks in-memory cache, falls back to native
+        cryptographic Merkle trajectory proof, and optionally queries external daemon if present.
         """
         if cua_sequence_id in self._audit_cache:
             return self._audit_cache[cua_sequence_id]
-            
+
+        # 1. First check native Merkle inclusion proof
         try:
-            cmd = [self.cua_binary, "history", "show", str(cua_sequence_id), "--json"]
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            
-            if result.returncode == 0:
-                data = json.loads(result.stdout)
+            merkle_proof = self.get_merkle_proof(cua_sequence_id)
+            if merkle_proof:
                 if len(self._audit_cache) < self.audit_cache_size:
-                    self._audit_cache[cua_sequence_id] = data
-                return data
-            return None
-        except subprocess.CalledProcessError as e:
-            print(f"[CuaGrainMemory Error] Cua Driver query failed: {e.stderr if e.stderr else e}")
-            return None
-        except json.JSONDecodeError:
-            print("[CuaGrainMemory Error] Invalid JSON response from Cua Driver.")
-            return None
-        except Exception as e:
-            print(f"[CuaGrainMemory Error] Audit execution error: {e}")
-            return None
+                    self._audit_cache[cua_sequence_id] = merkle_proof
+                return merkle_proof
+        except KeyError:
+            pass
+
+        # 2. Check external Cua daemon if binary exists
+        import shutil
+        if shutil.which(self.cua_binary):
+            try:
+                cmd = [self.cua_binary, "history", "show", str(cua_sequence_id), "--json"]
+                result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+                if result.returncode == 0:
+                    data = json.loads(result.stdout)
+                    if len(self._audit_cache) < self.audit_cache_size:
+                        self._audit_cache[cua_sequence_id] = data
+                    return data
+            except Exception:
+                pass
+
+        return None
 
     def hierarchical_recall(
         self,

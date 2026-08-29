@@ -18,17 +18,13 @@ jobs:
       with:
         python-version: "3.11"
 
-    - name: Build Native Metal Core
+    - name: Build Native Metal Core & Packaging
       run: |
-        chmod +x build.sh
-        ./build.sh
-
-    - name: Build Distribution Wheels & Source Tarball
-      run: |
-        python3 scripts/build_dist.py
+        chmod +x build.sh scripts/package_dist.sh
+        ./scripts/package_dist.sh
 
     - name: Create GitHub Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       with:
         files: dist/*
         generate_release_notes: true

@@ -31,7 +31,7 @@ jobs:
 
     - name: Run Python Unit Test Suite
       run: |
-        python3 -m unittest discover -s tests -p "test_*.py"
+        python3 -m unittest discover -s tests -p "test_*.py" -v
 
     - name: Run Swift Package Manager Test Suite
       run: |
@@ -40,3 +40,13 @@ jobs:
     - name: Run Swift Native Executable Demo
       run: |
         swift run CuaMemoryDemo
+
+    - name: Run Reproducible Benchmark Suite
+      run: |
+        python3 benchmark.py --n-vectors 20000 --dim 128 --n-queries 50 --k 10 --json benchmark_results.json
+
+    - name: Upload Verified Benchmark Artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: benchmark-results-${{ github.sha }}
+        path: benchmark_results.json

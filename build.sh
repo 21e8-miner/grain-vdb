@@ -102,6 +102,13 @@ else
 fi
 
 echo ""
+echo "Step 5: Synchronizing Swift Package sources from single source of truth..."
+mkdir -p "${SCRIPT_DIR}/Sources/CGrainVDB/include"
+cp "${SRC_DIR}/grainvdb.mm" "${SCRIPT_DIR}/Sources/CGrainVDB/grainvdb.mm"
+cp "${INCLUDE_DIR}/gv_core.h" "${SCRIPT_DIR}/Sources/CGrainVDB/include/gv_core.h"
+echo -e "${GREEN}  ✓ Swift Package sources synchronized with src/${NC}"
+
+echo ""
 echo "=========================================="
 echo -e "${GREEN}  Build completed successfully!${NC}"
 echo "=========================================="

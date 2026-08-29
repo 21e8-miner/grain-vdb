@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 set -e
 
+VERSION="2.1.0"
+
 echo "=========================================="
-echo "  Packaging GrainVDB v2.0.0 Distribution"
+echo "  Packaging GrainVDB v${VERSION} Distribution"
 echo "  Target: macOS Darwin arm64 (Apple Silicon)"
 echo "=========================================="
 
@@ -12,12 +14,16 @@ DIST_DIR="$ROOT_DIR/dist"
 
 mkdir -p "$DIST_DIR"
 
-# 1. Build latest binaries
+# 1. Build native Metal core binaries
 cd "$ROOT_DIR"
 ./build.sh
 
-# 2. Package release tarball
-PACKAGE_NAME="grainvdb-v2.0.0-darwin-arm64"
+# 2. Build Python wheel and source distribution
+python3 -m pip install --upgrade build setuptools wheel
+python3 -m build --outdir "$DIST_DIR"
+
+# 3. Package C/Swift release tarball
+PACKAGE_NAME="grainvdb-v${VERSION}-darwin-arm64"
 STAGE_DIR="$DIST_DIR/$PACKAGE_NAME"
 rm -rf "$STAGE_DIR"
 mkdir -p "$STAGE_DIR/include" "$STAGE_DIR/lib" "$STAGE_DIR/swift"
@@ -35,5 +41,7 @@ cd "$DIST_DIR"
 tar -czf "${PACKAGE_NAME}.tar.gz" "$PACKAGE_NAME"
 rm -rf "$STAGE_DIR"
 
-echo "✓ Created distribution archive: $DIST_DIR/${PACKAGE_NAME}.tar.gz"
-ls -lh "$DIST_DIR/${PACKAGE_NAME}.tar.gz"
+echo "=========================================="
+echo "✓ Distribution build complete:"
+ls -lh "$DIST_DIR"
+echo "=========================================="

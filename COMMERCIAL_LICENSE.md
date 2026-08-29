@@ -1,40 +1,25 @@
-# GrainVDB Commercial & Enterprise Licensing
+# GrainVDB Licensing
 
 GrainVDB is dual-licensed under the **MIT License** and the **GrainVDB Commercial License**.
 
 ---
 
-## 📋 Licensing Tiers
+## 📋 Licensing Options
 
-| Tier | Price | Ideal For | Rights & Features |
-| :--- | :--- | :--- | :--- |
-| **Community / Open Source** | **Free ($0)** | Personal, academic & OSS builders | Full source code access under MIT License. |
-| **Developer Commercial Pro** | **$49 one-time** (or $19/mo) | Indie developers, Mac ISVs, startups | Perpetual right to embed and redistribute GrainVDB in closed-source proprietary macOS/iOS applications without attribution requirements. Includes pre-compiled universal binaries. |
-| **Enterprise CUA Automation** | **$4,999 / year** | AI agent builders, RPA teams, enterprises | Multi-threaded async ingestion, Metal GPU kernel tuning, Chapter 4 Actuated Curiosity & IRB Safe Probing engine, priority SLA support. |
-| **Sovereign Compliance & Audit** | **$24,999 / year** | FinTech, healthcare, defense, enterprise legal | Tamper-proof cryptographic provenance proofs (Cua Driver integration), HIPAA/SOC2 compliance documentation, Mac Studio on-premise cluster deployment, and dedicated architecture support. |
+### 1. Open Source (MIT License)
+Free for personal, academic, and open-source projects. Full source code access is provided under the terms of the [MIT License](LICENSE).
 
----
-
-## 💼 Why Choose the Commercial License?
-
-1. **Closed-Source Embedding**: Distribute your commercial macOS/iOS applications without GPL/copyleft restrictions or visible copyright attribution requirements.
-2. **Pre-Compiled & Signed Binaries**: Access hardened, pre-built universal `dylib` and `metallib` binaries signed for direct Mac App Store and iOS App Store submission.
-3. **Enterprise Compliance & Non-Repudiation**: Hardware-anchored SHA-256 cryptographic audit logs designed for enterprise compliance and zero-trust security audits.
-4. **Token Arbitrage ROI**: Replaces 150k token context stuffing with sub-millisecond local replay, cutting enterprise LLM API expenditure by **99.76%**.
+### 2. Commercial / Enterprise License
+For proprietary, closed-source applications requiring:
+- Closed-source embedding without attribution requirements
+- Pre-compiled universal Apple Silicon binaries and Metal shaders
+- Dedicated SLA, integration support, and custom Metal compute kernel development
+- Cryptographic compliance and audit verification tools for enterprise workflows
 
 ---
 
-## 📩 Inquiries, Self-Serve Checkout & Purchasing
+## 📩 Commercial Inquiries
 
-1. **Self-Serve Developer Pro Checkout ($49 one-time / $19/mo):**
-   - **Polar.sh Storefront (Automated Tax & Delivery):** [https://polar.sh/grainvdb](https://polar.sh/grainvdb)
-   - **Direct Stripe Checkout:** [https://buy.stripe.com/grainvdb](https://buy.stripe.com/grainvdb)
-   *(Upon checkout, your commercial license certificate and pre-compiled Mac binaries are delivered instantly to your email).*
-
-2. **Enterprise Pilots & Custom SLA ($4,999 – $24,999 / year):**
-   - **Enterprise ROI Blueprint & Calculator:** See [ENTERPRISE_MONETIZATION.md](ENTERPRISE_MONETIZATION.md)
-   - **Schedule Discovery Call & Invoicing:** Contact `licensing@grainvdb.dev` or initiate a pilot request on [GitHub Discussions](https://github.com/21e8-miner/grain-vdb/discussions).
-   - Invoicing supported via Stripe Invoicing, Purchase Order (PO), ACH, and Wire Transfer (Net 30).
-
-3. **Open-Source Sponsorship & Community Grants:**
-   - Sponsor via [GitHub Sponsors](https://github.com/sponsors/21e8-miner) to fund ongoing Apple Silicon Metal GPU optimizations.
+For commercial licensing terms, custom deployments, or enterprise support:
+- **Email:** `licensing@grainvdb.dev`
+- **GitHub Discussions:** [https://github.com/21e8-miner/grain-vdb/discussions](https://github.com/21e8-miner/grain-vdb/discussions)

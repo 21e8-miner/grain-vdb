@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "grainvdb"
+version = "2.1.0"
+description = "Apple Silicon-Native Embedded Vector Store & Trajectory Memory for AI Agents"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [
+    { name = "GrainVDB Contributors", email = "licensing@grainvdb.dev" }
+]
+requires-python = ">=3.9"
+dependencies = [
+    "numpy>=1.20.0"
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS :: MacOS X",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Database",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence"
+]
+
+[project.urls]
+Homepage = "https://github.com/21e8-miner/grain-vdb"
+Documentation = "https://github.com/21e8-miner/grain-vdb#readme"
+Repository = "https://github.com/21e8-miner/grain-vdb.git"
+Issues = "https://github.com/21e8-miner/grain-vdb/issues"
+
+[project.scripts]
+grainvdb = "grainvdb.cli:main"
+agent-memory = "grainvdb.cli:agent_memory_main"
+grainvdb-mcp = "grainvdb.mcp_server:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["grainvdb*"]
+
+[tool.setuptools.package-data]
+grainvdb = ["*.dylib", "*.metallib", "*.so"]
