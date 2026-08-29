@@ -46,6 +46,23 @@ Benchmarks recorded on Apple M-series hardware (20,000 vectors, 128-dim FP16, To
 
 ---
 
+## 🍎 Native macOS Menu Bar App (`GrainMemory.app`)
+
+For macOS users who want zero-terminal setup and one-click agent memory:
+
+1. **Download:** Unzip `grain-memory-mac-app.zip` (available in [GitHub Releases](https://github.com/21e8-miner/grain-vdb/releases)).
+2. **Launch:** Run `GrainMemory.app` — it docks directly into your macOS Menu Bar (`⚡ Grain`).
+3. **One-Click Claude Setup:** Click *"Configure Claude Desktop (MCP)"* to automatically register local persistent Metal memory with Claude Desktop.
+4. **Visual Agent DVR:** Click *"Open Agent DVR Studio"* to inspect indexed trajectory timelines and Merkle proofs in a native desktop window.
+
+Or compile and package it locally:
+```bash
+./scripts/build_mac_app.sh
+# -> Outputs dist/grain-memory-mac-app.zip containing GrainMemory.app
+```
+
+---
+
 ## 🔌 Model Context Protocol (MCP) Server
 
 GrainVDB includes a built-in MCP server providing persistent local vector memory for Claude Desktop, Cursor, and Claude Code:

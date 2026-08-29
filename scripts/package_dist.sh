@@ -41,6 +41,10 @@ cd "$DIST_DIR"
 tar -czf "${PACKAGE_NAME}.tar.gz" "$PACKAGE_NAME"
 rm -rf "$STAGE_DIR"
 
+# 4. Build Native macOS Menu Bar App (grain-memory-mac-app.zip)
+cd "$ROOT_DIR"
+./scripts/build_mac_app.sh
+
 echo "=========================================="
 echo "✓ Distribution build complete:"
 ls -lh "$DIST_DIR"
